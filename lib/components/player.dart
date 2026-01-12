@@ -9,6 +9,15 @@ import '../game/space_game.dart';
 import 'bullet.dart' as bullet_component;
 import 'enemy.dart' as enemy_component;
 
+/// 武器類型
+enum WeaponType {
+  standard,   // 標準武器 - 平衡型
+  spread,     // 散射武器 - 寬範圍但傷害低
+  laser,      // 雷射武器 - 穿透型
+  missile,    // 飛彈武器 - 追蹤型
+  plasma,     // 電漿武器 - 高傷害但慢
+}
+
 class Player extends PositionComponent
     with HasGameReference<SpaceGame>, KeyboardHandler, CollisionCallbacks {
 
@@ -36,6 +45,7 @@ class Player extends PositionComponent
 
   // === 強化系統 ===
   int weaponLevel = 1;           // 武器等級 1-4
+  WeaponType weaponType = WeaponType.standard;  // 武器類型
   int lives = 3;                 // 生命數
   bool hasShield = false;        // 護盾狀態
   bool hasSpeedBoost = false;    // 加速狀態
@@ -304,39 +314,128 @@ class Player extends PositionComponent
   void shoot() {
     final bulletPos = position - Vector2(0, size.y / 2);
 
-    switch (weaponLevel) {
-      case 1:
-        // 單發
-        _spawnBullet(bulletPos, 0);
+    switch (weaponType) {
+      case WeaponType.standard:
+        _shootStandard(bulletPos);
         break;
-      case 2:
-        // 雙發平行
-        _spawnBullet(bulletPos - Vector2(8, 0), 0);
-        _spawnBullet(bulletPos + Vector2(8, 0), 0);
+      case WeaponType.spread:
+        _shootSpread(bulletPos);
         break;
-      case 3:
-        // 三發扇形
-        _spawnBullet(bulletPos, 0);
-        _spawnBullet(bulletPos - Vector2(10, 0), -0.15);
-        _spawnBullet(bulletPos + Vector2(10, 0), 0.15);
+      case WeaponType.laser:
+        _shootLaser(bulletPos);
         break;
-      case 4:
-        // 五發扇形 + 追蹤
-        _spawnBullet(bulletPos, 0);
-        _spawnBullet(bulletPos - Vector2(8, 0), -0.1);
-        _spawnBullet(bulletPos + Vector2(8, 0), 0.1);
-        _spawnBullet(bulletPos - Vector2(15, 5), -0.25);
-        _spawnBullet(bulletPos + Vector2(15, 5), 0.25);
+      case WeaponType.missile:
+        _shootMissile(bulletPos);
+        break;
+      case WeaponType.plasma:
+        _shootPlasma(bulletPos);
         break;
     }
   }
 
-  void _spawnBullet(Vector2 pos, double angleOffset) {
+  void _shootStandard(Vector2 bulletPos) {
+    switch (weaponLevel) {
+      case 1:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.standard);
+        break;
+      case 2:
+        _spawnBullet(bulletPos - Vector2(8, 0), 0, bullet_component.BulletType.standard);
+        _spawnBullet(bulletPos + Vector2(8, 0), 0, bullet_component.BulletType.standard);
+        break;
+      case 3:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.standard);
+        _spawnBullet(bulletPos - Vector2(10, 0), -0.15, bullet_component.BulletType.standard);
+        _spawnBullet(bulletPos + Vector2(10, 0), 0.15, bullet_component.BulletType.standard);
+        break;
+      case 4:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.standard);
+        _spawnBullet(bulletPos - Vector2(8, 0), -0.1, bullet_component.BulletType.standard);
+        _spawnBullet(bulletPos + Vector2(8, 0), 0.1, bullet_component.BulletType.standard);
+        _spawnBullet(bulletPos - Vector2(15, 5), -0.25, bullet_component.BulletType.standard);
+        _spawnBullet(bulletPos + Vector2(15, 5), 0.25, bullet_component.BulletType.standard);
+        break;
+    }
+  }
+
+  void _shootSpread(Vector2 bulletPos) {
+    // 散射武器 - 更多子彈，更寬角度
+    final count = 3 + weaponLevel * 2;
+    final angleSpread = 0.15 + weaponLevel * 0.05;
+
+    for (int i = 0; i < count; i++) {
+      final angleOffset = (i - (count - 1) / 2) * angleSpread;
+      _spawnBullet(bulletPos, angleOffset, bullet_component.BulletType.spread);
+    }
+  }
+
+  void _shootLaser(Vector2 bulletPos) {
+    // 雷射武器 - 穿透性子彈
+    switch (weaponLevel) {
+      case 1:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.laser);
+        break;
+      case 2:
+        _spawnBullet(bulletPos - Vector2(6, 0), 0, bullet_component.BulletType.laser);
+        _spawnBullet(bulletPos + Vector2(6, 0), 0, bullet_component.BulletType.laser);
+        break;
+      case 3:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.laser);
+        _spawnBullet(bulletPos - Vector2(12, 0), 0, bullet_component.BulletType.laser);
+        _spawnBullet(bulletPos + Vector2(12, 0), 0, bullet_component.BulletType.laser);
+        break;
+      case 4:
+        // 滿級：中央粗雷射 + 兩側
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.laserWide);
+        _spawnBullet(bulletPos - Vector2(18, 0), 0, bullet_component.BulletType.laser);
+        _spawnBullet(bulletPos + Vector2(18, 0), 0, bullet_component.BulletType.laser);
+        break;
+    }
+  }
+
+  void _shootMissile(Vector2 bulletPos) {
+    // 飛彈武器 - 追蹤型
+    final missileCount = weaponLevel;
+    final spacing = 15.0;
+
+    for (int i = 0; i < missileCount; i++) {
+      final offset = (i - (missileCount - 1) / 2) * spacing;
+      _spawnBullet(
+        bulletPos + Vector2(offset, 0),
+        0,
+        bullet_component.BulletType.missile,
+      );
+    }
+  }
+
+  void _shootPlasma(Vector2 bulletPos) {
+    // 電漿武器 - 高傷害但數量少
+    switch (weaponLevel) {
+      case 1:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.plasma);
+        break;
+      case 2:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.plasma);
+        _spawnBullet(bulletPos, 0.08, bullet_component.BulletType.plasmaSmall);
+        _spawnBullet(bulletPos, -0.08, bullet_component.BulletType.plasmaSmall);
+        break;
+      case 3:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.plasmaLarge);
+        break;
+      case 4:
+        _spawnBullet(bulletPos, 0, bullet_component.BulletType.plasmaLarge);
+        _spawnBullet(bulletPos - Vector2(15, 5), -0.1, bullet_component.BulletType.plasma);
+        _spawnBullet(bulletPos + Vector2(15, 5), 0.1, bullet_component.BulletType.plasma);
+        break;
+    }
+  }
+
+  void _spawnBullet(Vector2 pos, double angleOffset, bullet_component.BulletType bulletType) {
     game.world.add(
       bullet_component.Bullet(
         position: pos.clone(),
         angle: angleOffset,
         isPlayerBullet: true,
+        bulletType: bulletType,
       ),
     );
   }
@@ -348,6 +447,13 @@ class Player extends PositionComponent
       weaponLevel++;
       debugPrint('Weapon upgraded to level $weaponLevel');
     }
+  }
+
+  void changeWeapon(WeaponType newType) {
+    weaponType = newType;
+    // 換武器時等級重置為 2（比 1 強，但不是滿級）
+    if (weaponLevel < 2) weaponLevel = 2;
+    debugPrint('Weapon changed to ${newType.name}');
   }
 
   void activateShield() {
@@ -404,6 +510,7 @@ class Player extends PositionComponent
   // 重置玩家狀態（新遊戲時）
   void reset() {
     weaponLevel = 1;
+    weaponType = WeaponType.standard;
     lives = 3;
     hasShield = false;
     hasSpeedBoost = false;

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../game/space_game.dart';
 import 'player.dart';
+export 'player.dart' show WeaponType;
 
 /// 道具類型
 enum PowerUpType {
@@ -15,6 +16,13 @@ enum PowerUpType {
   rapidFire,      // 快速射擊
   bomb,           // 清屏炸彈
   extraLife,      // 額外生命
+  // 新增武器類型道具
+  weaponSpread,   // 散射武器
+  weaponLaser,    // 雷射武器
+  weaponMissile,  // 飛彈武器
+  weaponPlasma,   // 電漿武器
+  // 特殊獎勵道具（敵人群 bonus）
+  megaBonus,      // 大獎勵（高分數 + 隨機道具）
 }
 
 class PowerUp extends PositionComponent
@@ -47,6 +55,16 @@ class PowerUp extends PositionComponent
         return const Color(0xFFFF0000);  // 紅色
       case PowerUpType.extraLife:
         return const Color(0xFF00FF00);  // 綠色
+      case PowerUpType.weaponSpread:
+        return const Color(0xFF88FF00);  // 黃綠色
+      case PowerUpType.weaponLaser:
+        return const Color(0xFF00FFFF);  // 青色
+      case PowerUpType.weaponMissile:
+        return const Color(0xFFFF6600);  // 深橙色
+      case PowerUpType.weaponPlasma:
+        return const Color(0xFF8800FF);  // 紫羅蘭
+      case PowerUpType.megaBonus:
+        return const Color(0xFFFFD700);  // 金色
     }
   }
 
@@ -65,6 +83,16 @@ class PowerUp extends PositionComponent
         return 'B';
       case PowerUpType.extraLife:
         return '+';
+      case PowerUpType.weaponSpread:
+        return 'SP';
+      case PowerUpType.weaponLaser:
+        return 'LA';
+      case PowerUpType.weaponMissile:
+        return 'MI';
+      case PowerUpType.weaponPlasma:
+        return 'PL';
+      case PowerUpType.megaBonus:
+        return '★';
     }
   }
 
@@ -195,10 +223,40 @@ class PowerUp extends PositionComponent
       case PowerUpType.extraLife:
         player.addLife();
         break;
+      case PowerUpType.weaponSpread:
+        player.changeWeapon(WeaponType.spread);
+        break;
+      case PowerUpType.weaponLaser:
+        player.changeWeapon(WeaponType.laser);
+        break;
+      case PowerUpType.weaponMissile:
+        player.changeWeapon(WeaponType.missile);
+        break;
+      case PowerUpType.weaponPlasma:
+        player.changeWeapon(WeaponType.plasma);
+        break;
+      case PowerUpType.megaBonus:
+        _triggerMegaBonus(player);
+        break;
     }
 
     // 顯示獲得道具的提示
     game.addScore(50);
+  }
+
+  void _triggerMegaBonus(Player player) {
+    // 大獎勵：給予大量分數
+    game.addScore(500);
+
+    // 隨機給予一個效果
+    final random = Random();
+    final effects = [
+      () => player.upgradeWeapon(),
+      () => player.activateShield(),
+      () => player.activateRapidFire(),
+      () => player.addLife(),
+    ];
+    effects[random.nextInt(effects.length)]();
   }
 
   void _triggerBomb() {
@@ -218,27 +276,62 @@ class PowerUp extends PositionComponent
 class PowerUpSpawner {
   static final _random = Random();
 
-  /// 根據機率生成道具類型
+  /// 根據機率生成道具類型（一般敵人）
+  /// 掉落率從 30% 降低到 20%
   static PowerUpType? getRandomType() {
     final roll = _random.nextDouble();
 
-    // 30% 機率掉落道具
-    if (roll > 0.30) return null;
+    // 20% 機率掉落道具（降低一般掉落率）
+    if (roll > 0.20) return null;
 
-    // 道具機率分配
+    return _selectPowerUpType();
+  }
+
+  /// 編隊敵人 bonus 掉落（必定掉落，且有機會掉落特殊道具）
+  static PowerUpType getFormationBonusType() {
     final typeRoll = _random.nextDouble();
-    if (typeRoll < 0.35) {
-      return PowerUpType.weaponUpgrade;  // 35% - 武器升級
-    } else if (typeRoll < 0.55) {
-      return PowerUpType.shield;         // 20% - 護盾
-    } else if (typeRoll < 0.70) {
-      return PowerUpType.rapidFire;      // 15% - 快速射擊
-    } else if (typeRoll < 0.85) {
-      return PowerUpType.speedBoost;     // 15% - 加速
-    } else if (typeRoll < 0.95) {
-      return PowerUpType.bomb;           // 10% - 清屏炸彈
-    } else {
-      return PowerUpType.extraLife;      // 5% - 額外生命
+
+    // 30% 機率掉落大獎勵
+    if (typeRoll < 0.30) {
+      return PowerUpType.megaBonus;
     }
+
+    // 30% 機率掉落武器道具
+    if (typeRoll < 0.60) {
+      return _selectWeaponType();
+    }
+
+    // 其餘掉落一般道具
+    return _selectPowerUpType();
+  }
+
+  /// 選擇一般道具類型
+  static PowerUpType _selectPowerUpType() {
+    final typeRoll = _random.nextDouble();
+
+    if (typeRoll < 0.30) {
+      return PowerUpType.weaponUpgrade;  // 30% - 武器升級
+    } else if (typeRoll < 0.50) {
+      return PowerUpType.shield;         // 20% - 護盾
+    } else if (typeRoll < 0.65) {
+      return PowerUpType.rapidFire;      // 15% - 快速射擊
+    } else if (typeRoll < 0.80) {
+      return PowerUpType.speedBoost;     // 15% - 加速
+    } else if (typeRoll < 0.92) {
+      return PowerUpType.bomb;           // 12% - 清屏炸彈
+    } else {
+      return PowerUpType.extraLife;      // 8% - 額外生命
+    }
+  }
+
+  /// 選擇武器道具類型
+  static PowerUpType _selectWeaponType() {
+    final weapons = [
+      PowerUpType.weaponSpread,
+      PowerUpType.weaponLaser,
+      PowerUpType.weaponMissile,
+      PowerUpType.weaponPlasma,
+    ];
+    return weapons[_random.nextInt(weapons.length)];
   }
 }

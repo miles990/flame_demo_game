@@ -15,17 +15,31 @@ enum EnemyType {
   tank,       // 坦克敵人 - 慢但血厚
   shooter,    // 射擊敵人 - 會發射子彈
   zigzag,     // Z字形敵人 - 來回移動
+  tracker,    // 追蹤敵人 - 追蹤玩家位置
+  diver,      // 俯衝敵人 - 俯衝攻擊後撤退
+  orbiter,    // 環繞敵人 - 環繞移動並射擊
+}
+
+/// 敵人進入方向
+enum SpawnDirection {
+  top,        // 從上方進入（預設）
+  left,       // 從左側進入
+  right,      // 從右側進入
+  topLeft,    // 從左上角進入
+  topRight,   // 從右上角進入
 }
 
 class Enemy extends PositionComponent
     with HasGameReference<SpaceGame>, CollisionCallbacks {
 
   final EnemyType type;
+  final SpawnDirection spawnDirection;
   int health;
 
   Enemy({
     required super.position,
     this.type = EnemyType.basic,
+    this.spawnDirection = SpawnDirection.top,
   }) : health = _getHealthByType(type),
        super(
          size: _getSizeByType(type),
@@ -39,6 +53,9 @@ class Enemy extends PositionComponent
       case EnemyType.tank: return 3;
       case EnemyType.shooter: return 2;
       case EnemyType.zigzag: return 1;
+      case EnemyType.tracker: return 2;
+      case EnemyType.diver: return 1;
+      case EnemyType.orbiter: return 2;
     }
   }
 
@@ -49,6 +66,9 @@ class Enemy extends PositionComponent
       case EnemyType.tank: return Vector2(55, 55);
       case EnemyType.shooter: return Vector2(45, 45);
       case EnemyType.zigzag: return Vector2(35, 35);
+      case EnemyType.tracker: return Vector2(38, 38);
+      case EnemyType.diver: return Vector2(35, 40);
+      case EnemyType.orbiter: return Vector2(32, 32);
     }
   }
 
@@ -57,12 +77,24 @@ class Enemy extends PositionComponent
   late double frequency;
   double time = 0;
   double startX = 0;
+  double startY = 0;
   double shootCooldown = 0;
   int zigzagDirection = 1;
+
+  // 新增行為模式變數
+  bool _isDiving = false;
+  double _diveTargetY = 0;
+  double _orbitAngle = 0;
+  double _orbitCenterX = 0;
+  double _orbitCenterY = 0;
+  Vector2 _moveDirection = Vector2(0, 1);
 
   @override
   Future<void> onLoad() async {
     final random = Random();
+
+    // 根據進入方向設定初始移動方向
+    _moveDirection = _getDirectionFromSpawn();
 
     switch (type) {
       case EnemyType.basic:
@@ -92,10 +124,44 @@ class Enemy extends PositionComponent
         frequency = 0;
         zigzagDirection = random.nextBool() ? 1 : -1;
         break;
+      case EnemyType.tracker:
+        speed = 90 + random.nextDouble() * 40;
+        amplitude = 0;
+        frequency = 0;
+        break;
+      case EnemyType.diver:
+        speed = 150 + random.nextDouble() * 50;
+        amplitude = 0;
+        frequency = 0;
+        _diveTargetY = game.size.y * 0.6;
+        break;
+      case EnemyType.orbiter:
+        speed = 60;
+        amplitude = 0;
+        frequency = 3;
+        shootCooldown = 1.5;
+        _orbitAngle = random.nextDouble() * pi * 2;
+        break;
     }
 
     startX = position.x;
+    startY = position.y;
     add(CircleHitbox());
+  }
+
+  Vector2 _getDirectionFromSpawn() {
+    switch (spawnDirection) {
+      case SpawnDirection.top:
+        return Vector2(0, 1);
+      case SpawnDirection.left:
+        return Vector2(1, 0.5);
+      case SpawnDirection.right:
+        return Vector2(-1, 0.5);
+      case SpawnDirection.topLeft:
+        return Vector2(0.7, 0.7).normalized();
+      case SpawnDirection.topRight:
+        return Vector2(-0.7, 0.7).normalized();
+    }
   }
 
   Color get _color {
@@ -105,21 +171,31 @@ class Enemy extends PositionComponent
       case EnemyType.tank: return const Color(0xFF666688);
       case EnemyType.shooter: return const Color(0xFF8822CC);
       case EnemyType.zigzag: return const Color(0xFF22CCCC);
+      case EnemyType.tracker: return const Color(0xFFFF4488);
+      case EnemyType.diver: return const Color(0xFFFFCC00);
+      case EnemyType.orbiter: return const Color(0xFF44FFAA);
     }
   }
 
   @override
   void render(Canvas canvas) {
-    // 外層光暈
+    // 動態脈動效果
+    final pulse = 1.0 + sin(time * 4) * 0.05;
+
+    // 外層光暈 - 根據敵人類型有不同效果
+    final glowIntensity = _getGlowIntensity();
     final glowPaint = Paint()
-      ..color = _color.withOpacity(0.3)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      ..color = _color.withOpacity(0.3 * glowIntensity)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 8 * pulse);
 
     canvas.drawCircle(
       Offset(size.x / 2, size.y / 2),
-      size.x / 2 + 5,
+      (size.x / 2 + 5) * pulse,
       glowPaint,
     );
+
+    // 特殊效果層（某些敵人類型）
+    _drawSpecialEffects(canvas);
 
     // 根據敵人類型繪製不同外觀
     switch (type) {
@@ -138,12 +214,236 @@ class Enemy extends PositionComponent
       case EnemyType.zigzag:
         _drawStar(canvas);
         break;
+      case EnemyType.tracker:
+        _drawTracker(canvas);
+        break;
+      case EnemyType.diver:
+        _drawDiver(canvas);
+        break;
+      case EnemyType.orbiter:
+        _drawOrbiter(canvas);
+        break;
     }
 
-    // 血量指示（坦克和射手）
-    if (type == EnemyType.tank || type == EnemyType.shooter) {
+    // 血量指示（坦克和射手和追蹤者）
+    if (type == EnemyType.tank || type == EnemyType.shooter ||
+        type == EnemyType.tracker || type == EnemyType.orbiter) {
       _drawHealthBar(canvas);
     }
+
+    // 方向指示器（從側面進入的敵人）
+    if (spawnDirection != SpawnDirection.top) {
+      _drawDirectionIndicator(canvas);
+    }
+  }
+
+  double _getGlowIntensity() {
+    switch (type) {
+      case EnemyType.basic: return 1.0;
+      case EnemyType.fast: return 1.3;  // 快速敵人更亮
+      case EnemyType.tank: return 0.8;  // 坦克較暗
+      case EnemyType.shooter: return 1.2;
+      case EnemyType.zigzag: return 1.1;
+      case EnemyType.tracker: return 1.4;  // 追蹤者閃爍
+      case EnemyType.diver: return _isDiving ? 1.8 : 1.0;  // 俯衝時更亮
+      case EnemyType.orbiter: return 1.0 + sin(time * 3).abs() * 0.5;  // 脈動
+    }
+  }
+
+  void _drawSpecialEffects(Canvas canvas) {
+    switch (type) {
+      case EnemyType.fast:
+        // 速度線效果
+        _drawSpeedLines(canvas);
+        break;
+      case EnemyType.shooter:
+        // 瞄準線效果
+        if (shootCooldown < 0.5) {
+          _drawAimLine(canvas);
+        }
+        break;
+      case EnemyType.zigzag:
+        // Z 字軌跡殘影
+        _drawZigzagTrail(canvas);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _drawSpeedLines(Canvas canvas) {
+    final linePaint = Paint()
+      ..color = _color.withOpacity(0.4)
+      ..strokeWidth = 2;
+
+    for (int i = 0; i < 3; i++) {
+      final offset = i * 8.0;
+      canvas.drawLine(
+        Offset(size.x * 0.3, size.y + offset),
+        Offset(size.x * 0.3, size.y + offset + 15),
+        linePaint,
+      );
+      canvas.drawLine(
+        Offset(size.x * 0.7, size.y + offset),
+        Offset(size.x * 0.7, size.y + offset + 15),
+        linePaint,
+      );
+    }
+  }
+
+  void _drawAimLine(Canvas canvas) {
+    final aimPaint = Paint()
+      ..color = const Color(0xFFFF0000).withOpacity(0.5)
+      ..strokeWidth = 1;
+
+    final blinkOpacity = (sin(time * 20) + 1) / 2;
+    aimPaint.color = const Color(0xFFFF0000).withOpacity(0.3 * blinkOpacity);
+
+    canvas.drawLine(
+      Offset(size.x / 2, size.y),
+      Offset(size.x / 2, size.y + 100),
+      aimPaint,
+    );
+  }
+
+  void _drawZigzagTrail(Canvas canvas) {
+    final trailPaint = Paint()
+      ..color = _color.withOpacity(0.2)
+      ..style = PaintingStyle.fill;
+
+    // 殘影效果
+    for (int i = 1; i <= 3; i++) {
+      final offset = zigzagDirection * i * 10.0;
+      canvas.drawCircle(
+        Offset(size.x / 2 - offset, size.y / 2 + i * 8),
+        (size.x / 4) / i,
+        trailPaint,
+      );
+    }
+  }
+
+  void _drawDirectionIndicator(Canvas canvas) {
+    // 繪製進入方向的小箭頭
+    final arrowPaint = Paint()
+      ..color = _color.withOpacity(0.6)
+      ..style = PaintingStyle.fill;
+
+    canvas.save();
+    canvas.translate(size.x / 2, size.y / 2);
+
+    // 根據方向旋轉
+    final rotationAngle = switch (spawnDirection) {
+      SpawnDirection.top => 0.0,
+      SpawnDirection.left => -pi / 4,
+      SpawnDirection.right => pi / 4,
+      SpawnDirection.topLeft => -pi / 6,
+      SpawnDirection.topRight => pi / 6,
+    };
+    canvas.rotate(rotationAngle);
+
+    // 小箭頭
+    final arrowPath = Path()
+      ..moveTo(0, -size.y / 2 - 8)
+      ..lineTo(-4, -size.y / 2 - 2)
+      ..lineTo(4, -size.y / 2 - 2)
+      ..close();
+
+    canvas.drawPath(arrowPath, arrowPaint);
+    canvas.restore();
+  }
+
+  void _drawTracker(Canvas canvas) {
+    final paint = Paint()
+      ..color = _color
+      ..style = PaintingStyle.fill;
+
+    // 追蹤者外觀 - 眼睛形狀
+    final path = Path()
+      ..moveTo(size.x / 2, 0)
+      ..quadraticBezierTo(size.x, size.y / 2, size.x / 2, size.y)
+      ..quadraticBezierTo(0, size.y / 2, size.x / 2, 0)
+      ..close();
+
+    canvas.drawPath(path, paint);
+    _drawOutlineAndEye(canvas, path);
+
+    // 追蹤雷達效果
+    final radarPaint = Paint()
+      ..color = _color.withOpacity(0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    canvas.drawCircle(
+      Offset(size.x / 2, size.y / 2),
+      size.x / 2 + sin(time * 5) * 5,
+      radarPaint,
+    );
+  }
+
+  void _drawDiver(Canvas canvas) {
+    final paint = Paint()
+      ..color = _color
+      ..style = PaintingStyle.fill;
+
+    // 俯衝者外觀 - 尖銳的向下箭頭
+    final path = Path()
+      ..moveTo(size.x / 2, 0)
+      ..lineTo(size.x * 0.8, size.y * 0.3)
+      ..lineTo(size.x * 0.65, size.y * 0.3)
+      ..lineTo(size.x * 0.65, size.y * 0.7)
+      ..lineTo(size.x, size.y)
+      ..lineTo(size.x / 2, size.y * 0.8)
+      ..lineTo(0, size.y)
+      ..lineTo(size.x * 0.35, size.y * 0.7)
+      ..lineTo(size.x * 0.35, size.y * 0.3)
+      ..lineTo(size.x * 0.2, size.y * 0.3)
+      ..close();
+
+    canvas.drawPath(path, paint);
+    _drawOutlineAndEye(canvas, path);
+
+    // 俯衝時的火焰效果
+    if (_isDiving) {
+      final flamePaint = Paint()
+        ..color = const Color(0xFFFF4400).withOpacity(0.7)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      canvas.drawCircle(
+        Offset(size.x / 2, 0),
+        8 + sin(time * 20) * 3,
+        flamePaint,
+      );
+    }
+  }
+
+  void _drawOrbiter(Canvas canvas) {
+    final paint = Paint()
+      ..color = _color
+      ..style = PaintingStyle.fill;
+
+    // 環繞者外觀 - 旋轉的圓環
+    canvas.save();
+    canvas.translate(size.x / 2, size.y / 2);
+    canvas.rotate(_orbitAngle);
+
+    // 外環
+    final ringPaint = Paint()
+      ..color = _color.withOpacity(0.5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(Offset.zero, size.x / 2 - 2, ringPaint);
+
+    // 核心
+    canvas.drawCircle(Offset.zero, size.x / 4, paint);
+
+    // 軌道上的小球
+    for (int i = 0; i < 3; i++) {
+      final angle = (i / 3) * pi * 2;
+      final orbX = cos(angle) * (size.x / 2 - 5);
+      final orbY = sin(angle) * (size.y / 2 - 5);
+      canvas.drawCircle(Offset(orbX, orbY), 4, paint);
+    }
+
+    canvas.restore();
+    _drawEye(canvas);
   }
 
   void _drawHexagon(Canvas canvas) {
@@ -326,38 +626,131 @@ class Enemy extends PositionComponent
 
     switch (type) {
       case EnemyType.basic:
-        position.y += speed * dt;
-        position.x = startX + sin(time * frequency) * amplitude;
+        _updateBasic(dt);
         break;
 
       case EnemyType.fast:
-        position.y += speed * dt;
+        _updateFast(dt);
         break;
 
       case EnemyType.tank:
-        position.y += speed * dt;
-        position.x = startX + sin(time * frequency) * amplitude;
+        _updateTank(dt);
         break;
 
       case EnemyType.shooter:
-        position.y += speed * dt;
-        position.x = startX + sin(time * frequency) * amplitude;
-        _handleShooting(dt);
+        _updateShooter(dt);
         break;
 
       case EnemyType.zigzag:
-        position.y += speed * dt;
-        position.x += zigzagDirection * 200 * dt;
-        if (position.x < 50 || position.x > game.size.x - 50) {
-          zigzagDirection *= -1;
-        }
+        _updateZigzag(dt);
+        break;
+
+      case EnemyType.tracker:
+        _updateTracker(dt);
+        break;
+
+      case EnemyType.diver:
+        _updateDiver(dt);
+        break;
+
+      case EnemyType.orbiter:
+        _updateOrbiter(dt);
         break;
     }
 
-    // Remove if off screen
-    if (position.y > game.size.y + 100) {
+    // Remove if off screen (考慮不同方向進入)
+    if (position.y > game.size.y + 100 ||
+        position.y < -150 ||
+        position.x < -100 ||
+        position.x > game.size.x + 100) {
       removeFromParent();
     }
+  }
+
+  void _updateBasic(double dt) {
+    position += _moveDirection * speed * dt;
+    position.x = startX + sin(time * frequency) * amplitude * _moveDirection.y.abs();
+  }
+
+  void _updateFast(double dt) {
+    position += _moveDirection * speed * dt;
+  }
+
+  void _updateTank(double dt) {
+    position += _moveDirection * speed * dt;
+    position.x = startX + sin(time * frequency) * amplitude * _moveDirection.y.abs();
+  }
+
+  void _updateShooter(double dt) {
+    position += _moveDirection * speed * dt;
+    position.x = startX + sin(time * frequency) * amplitude * _moveDirection.y.abs();
+    _handleShooting(dt);
+  }
+
+  void _updateZigzag(double dt) {
+    position.y += speed * dt * _moveDirection.y.abs();
+    position.x += zigzagDirection * 200 * dt;
+    if (position.x < 50 || position.x > game.size.x - 50) {
+      zigzagDirection *= -1;
+    }
+  }
+
+  void _updateTracker(double dt) {
+    // 追蹤玩家位置
+    final playerPos = game.player.position;
+    final direction = (playerPos - position).normalized();
+
+    // 緩慢轉向玩家
+    _moveDirection = (_moveDirection + direction * 0.02).normalized();
+    position += _moveDirection * speed * dt;
+  }
+
+  void _updateDiver(double dt) {
+    if (!_isDiving) {
+      // 先水平移動進入螢幕
+      position += _moveDirection * speed * 0.5 * dt;
+
+      // 當到達一定位置時開始俯衝
+      if (position.y > 50 && position.y < 150) {
+        _isDiving = true;
+        // 瞄準玩家位置
+        final playerPos = game.player.position;
+        _moveDirection = (playerPos - position).normalized();
+      }
+    } else {
+      // 俯衝階段 - 高速衝向目標
+      position += _moveDirection * speed * 2 * dt;
+
+      // 俯衝到一定深度後撤退
+      if (position.y > _diveTargetY) {
+        _isDiving = false;
+        _moveDirection = Vector2(
+          _moveDirection.x,
+          -0.8,  // 向上撤退
+        ).normalized();
+        speed *= 0.8;  // 撤退時減速
+      }
+    }
+  }
+
+  void _updateOrbiter(double dt) {
+    // 先進入螢幕
+    if (time < 1.5) {
+      position += _moveDirection * speed * dt;
+      _orbitCenterX = position.x;
+      _orbitCenterY = position.y + 50;
+    } else {
+      // 環繞移動
+      _orbitAngle += frequency * dt;
+      final radius = 80.0;
+      position.x = _orbitCenterX + cos(_orbitAngle) * radius;
+      position.y = _orbitCenterY + sin(_orbitAngle) * radius * 0.5;
+
+      // 緩慢向下移動軌道中心
+      _orbitCenterY += 20 * dt;
+    }
+
+    _handleShooting(dt);
   }
 
   void _handleShooting(double dt) {
@@ -378,8 +771,8 @@ class Enemy extends PositionComponent
     );
   }
 
-  void takeDamage() {
-    health--;
+  void takeDamage([int damage = 1]) {
+    health -= damage;
     if (health <= 0) {
       _onDestroyed();
     }
@@ -393,6 +786,9 @@ class Enemy extends PositionComponent
       EnemyType.tank => 300,
       EnemyType.shooter => 250,
       EnemyType.zigzag => 120,
+      EnemyType.tracker => 200,
+      EnemyType.diver => 180,
+      EnemyType.orbiter => 220,
     };
     game.addScore(score);
 
@@ -420,8 +816,11 @@ class Enemy extends PositionComponent
     super.onCollisionStart(intersectionPoints, other);
 
     if (other is bullet_component.Bullet && other.isPlayerBullet) {
-      other.removeFromParent();
-      takeDamage();
+      final damage = other.getDamage();
+      if (!other.isPiercing) {
+        other.removeFromParent();
+      }
+      takeDamage(damage);
     }
   }
 }
@@ -528,14 +927,25 @@ class Boss extends PositionComponent
     }
   }
 
+  // Boss 攻擊階段（血量越低，攻擊越猛烈）
+  int get attackPhase {
+    final healthPercent = health / maxHealth;
+    if (healthPercent > 0.7) return 1;
+    if (healthPercent > 0.4) return 2;
+    return 3;  // 狂暴階段
+  }
+
+  // 憤怒模式（血量低於 30%）
+  bool get isEnraged => health / maxHealth < 0.3;
+
   @override
   Future<void> onLoad() async {
-    // 根據 Boss 類型調整血量
+    // 根據 Boss 類型調整血量 - 大幅提升
     maxHealth = switch (bossType) {
-      BossType.destroyer => 20 + stage * 10,
-      BossType.carrier => 25 + stage * 12,
-      BossType.fortress => 40 + stage * 15,
-      BossType.phantom => 15 + stage * 8,
+      BossType.destroyer => 35 + stage * 18,
+      BossType.carrier => 45 + stage * 20,
+      BossType.fortress => 70 + stage * 25,
+      BossType.phantom => 25 + stage * 12,
     };
     health = maxHealth;
     position = Vector2(game.size.x / 2, -100);
@@ -847,62 +1257,84 @@ class Boss extends PositionComponent
   }
 
   void _updateDestroyer(double dt) {
-    position.x = game.size.x / 2 + sin(time * 0.5) * 200;
+    // 移動速度根據階段增加
+    final moveSpeed = 0.5 + attackPhase * 0.2;
+    position.x = game.size.x / 2 + sin(time * moveSpeed) * 200;
+
+    // 憤怒模式時上下移動
+    if (isEnraged) {
+      position.y = targetY + sin(time * 2) * 30;
+    }
 
     shootCooldown -= dt;
+    // 攻擊間隔根據階段減少
+    final cooldownTime = 1.5 - (attackPhase - 1) * 0.3;
     if (shootCooldown <= 0) {
       _executeDestroyerAttack();
-      attackPattern = (attackPattern + 1) % 3;
-      shootCooldown = 1.5;
+      attackPattern = (attackPattern + 1) % (isEnraged ? 5 : 3);
+      shootCooldown = cooldownTime;
     }
   }
 
   void _updateCarrier(double dt) {
-    position.x = game.size.x / 2 + sin(time * 0.3) * 150;
+    final moveSpeed = 0.3 + attackPhase * 0.1;
+    position.x = game.size.x / 2 + sin(time * moveSpeed) * 150;
 
-    // 生成小怪
+    // 生成小怪 - 頻率隨階段增加
     _spawnCooldown -= dt;
+    final spawnInterval = 4.0 - attackPhase * 0.8;
     if (_spawnCooldown <= 0) {
       _spawnMinions();
-      _spawnCooldown = 4.0;
+      _spawnCooldown = spawnInterval;
     }
 
-    // 偶爾射擊
+    // 射擊頻率隨階段增加
     shootCooldown -= dt;
+    final shootInterval = 2.5 - attackPhase * 0.5;
     if (shootCooldown <= 0) {
       _executeCarrierAttack();
-      shootCooldown = 2.5;
+      shootCooldown = shootInterval;
     }
   }
 
   void _updateFortress(double dt) {
-    // 堡壘移動緩慢
-    position.x = game.size.x / 2 + sin(time * 0.2) * 100;
+    // 堡壘移動緩慢，但狂暴時加速
+    final moveSpeed = isEnraged ? 0.4 : 0.2;
+    position.x = game.size.x / 2 + sin(time * moveSpeed) * 100;
+
+    // 狂暴時輕微旋轉
+    if (isEnraged) {
+      angle = sin(time * 2) * 0.1;
+    }
 
     shootCooldown -= dt;
+    final cooldown = 1.2 - attackPhase * 0.2;
     if (shootCooldown <= 0) {
       _executeFortressAttack();
-      attackPattern = (attackPattern + 1) % 2;
-      shootCooldown = 1.2;
+      attackPattern = (attackPattern + 1) % (isEnraged ? 4 : 2);
+      shootCooldown = cooldown;
     }
   }
 
   void _updatePhantom(double dt) {
-    // 瞬移邏輯
+    // 瞬移邏輯 - 頻率隨階段增加
     _teleportCooldown -= dt;
+    final teleportInterval = 3.0 - attackPhase * 0.5;
     if (_teleportCooldown <= 0) {
       _teleport();
-      _teleportCooldown = 3.0;
+      _teleportCooldown = teleportInterval;
     }
 
-    // 透明度波動
-    _opacity = 0.5 + 0.5 * sin(time * 2).abs();
+    // 透明度波動 - 狂暴時更快閃爍
+    final flickerSpeed = isEnraged ? 5.0 : 2.0;
+    _opacity = 0.4 + 0.6 * sin(time * flickerSpeed).abs();
 
-    // 快速射擊
+    // 快速射擊 - 攻擊間隔根據階段減少
     shootCooldown -= dt;
+    final shootInterval = 0.8 - attackPhase * 0.15;
     if (shootCooldown <= 0) {
       _executePhantomAttack();
-      shootCooldown = 0.8;
+      shootCooldown = shootInterval;
     }
   }
 
@@ -914,33 +1346,56 @@ class Boss extends PositionComponent
 
   void _spawnMinions() {
     final random = Random();
-    for (int i = 0; i < 3; i++) {
-      final offset = (i - 1) * 60.0;
+    final minionCount = 3 + attackPhase;
+
+    for (int i = 0; i < minionCount; i++) {
+      final offset = (i - (minionCount - 1) / 2) * 50.0;
+
+      // 根據階段生成不同類型的小怪
+      EnemyType minionType;
+      if (attackPhase == 1) {
+        minionType = random.nextBool() ? EnemyType.fast : EnemyType.basic;
+      } else if (attackPhase == 2) {
+        final roll = random.nextDouble();
+        if (roll < 0.4) minionType = EnemyType.fast;
+        else if (roll < 0.7) minionType = EnemyType.zigzag;
+        else minionType = EnemyType.shooter;
+      } else {
+        // 狂暴階段生成更強的小怪
+        final roll = random.nextDouble();
+        if (roll < 0.3) minionType = EnemyType.tracker;
+        else if (roll < 0.6) minionType = EnemyType.diver;
+        else minionType = EnemyType.shooter;
+      }
+
       game.world.add(Enemy(
         position: position + Vector2(offset, size.y / 2 + 20),
-        type: random.nextBool() ? EnemyType.fast : EnemyType.basic,
+        type: minionType,
       ));
     }
   }
 
   void _executeDestroyerAttack() {
+    final bulletCount = 5 + attackPhase * 2;
+
     switch (attackPattern) {
       case 0:
-        // 散射
-        for (int i = -2; i <= 2; i++) {
+        // 散射 - 根據階段增加子彈數
+        for (int i = -(bulletCount ~/ 2); i <= bulletCount ~/ 2; i++) {
           game.world.add(
             bullet_component.Bullet(
               position: position + Vector2(0, size.y / 2),
-              angle: i * 0.2,
+              angle: i * 0.15,
               isPlayerBullet: false,
             ),
           );
         }
         break;
       case 1:
-        // 三連發
-        for (int i = 0; i < 3; i++) {
-          final offset = (i - 1) * 40.0;
+        // 三連發 + 階段加強
+        final count = 3 + attackPhase;
+        for (int i = 0; i < count; i++) {
+          final offset = (i - (count - 1) / 2) * 35.0;
           game.world.add(
             bullet_component.Bullet(
               position: position + Vector2(offset, size.y / 2),
@@ -951,9 +1406,10 @@ class Boss extends PositionComponent
         }
         break;
       case 2:
-        // 環形攻擊
-        for (int i = 0; i < 8; i++) {
-          final angle = (i / 8) * pi * 2;
+        // 環形攻擊 - 子彈數量隨階段增加
+        final ringCount = 8 + attackPhase * 4;
+        for (int i = 0; i < ringCount; i++) {
+          final angle = (i / ringCount) * pi * 2;
           game.world.add(
             bullet_component.Bullet(
               position: position + Vector2(0, size.y / 2),
@@ -963,54 +1419,156 @@ class Boss extends PositionComponent
           );
         }
         break;
+      case 3:
+        // 新增：螺旋彈幕（狂暴階段）
+        _executeSpiral(12, 0.1);
+        break;
+      case 4:
+        // 新增：追蹤彈幕（狂暴階段）
+        _executeHomingBurst();
+        break;
     }
   }
 
-  void _executeCarrierAttack() {
-    // 航母攻擊 - 寬範圍
-    for (int i = -3; i <= 3; i++) {
+  void _executeSpiral(int count, double angleOffset) {
+    for (int i = 0; i < count; i++) {
+      final delay = i * 50;
+      Future.delayed(Duration(milliseconds: delay), () {
+        if (isMounted) {
+          final angle = (time * 3 + i * angleOffset) % (pi * 2);
+          game.world.add(
+            bullet_component.Bullet(
+              position: position.clone(),
+              angle: angle - pi / 2,
+              isPlayerBullet: false,
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  void _executeHomingBurst() {
+    final playerPos = game.player.position;
+    final direction = (playerPos - position).normalized();
+    final baseAngle = atan2(direction.x, -direction.y);
+
+    for (int i = -2; i <= 2; i++) {
       game.world.add(
         bullet_component.Bullet(
-          position: position + Vector2(i * 25.0, size.y / 2),
-          angle: 0,
+          position: position + Vector2(0, size.y / 2),
+          angle: baseAngle + i * 0.12,
           isPlayerBullet: false,
         ),
       );
     }
   }
 
-  void _executeFortressAttack() {
-    switch (attackPattern) {
+  void _executeCarrierAttack() {
+    final count = 3 + attackPhase * 2;
+
+    switch (attackPattern % 3) {
       case 0:
-        // 環形彈幕
-        for (int i = 0; i < 12; i++) {
-          final angle = (i / 12) * pi * 2 + time * 0.5;
+        // 寬範圍攻擊
+        for (int i = -count; i <= count; i++) {
           game.world.add(
             bullet_component.Bullet(
-              position: position + Vector2(0, 0),
-              angle: angle - pi / 2,
+              position: position + Vector2(i * 22.0, size.y / 2),
+              angle: 0,
               isPlayerBullet: false,
             ),
           );
         }
         break;
       case 1:
-        // 十字攻擊
-        for (int i = 0; i < 4; i++) {
-          final angle = (i / 4) * pi * 2;
-          for (int j = 1; j <= 3; j++) {
-            Future.delayed(Duration(milliseconds: j * 100), () {
+        // 波浪彈幕
+        for (int i = 0; i < count * 2; i++) {
+          final delay = i * 80;
+          Future.delayed(Duration(milliseconds: delay), () {
+            if (isMounted) {
+              final xOffset = sin(i * 0.5) * 80;
+              game.world.add(
+                bullet_component.Bullet(
+                  position: position + Vector2(xOffset, size.y / 2),
+                  angle: 0,
+                  isPlayerBullet: false,
+                ),
+              );
+            }
+          });
+        }
+        break;
+      case 2:
+        // 扇形追蹤
+        _executeHomingBurst();
+        break;
+    }
+    attackPattern++;
+  }
+
+  void _executeFortressAttack() {
+    final ringCount = 12 + attackPhase * 4;
+
+    switch (attackPattern) {
+      case 0:
+        // 環形彈幕 - 數量隨階段增加
+        for (int i = 0; i < ringCount; i++) {
+          final bulletAngle = (i / ringCount) * pi * 2 + time * 0.5;
+          game.world.add(
+            bullet_component.Bullet(
+              position: position + Vector2(0, 0),
+              angle: bulletAngle - pi / 2,
+              isPlayerBullet: false,
+            ),
+          );
+        }
+        break;
+      case 1:
+        // 十字攻擊 - 連發數隨階段增加
+        final arms = 4 + (attackPhase > 2 ? 4 : 0);  // 8 臂攻擊
+        for (int i = 0; i < arms; i++) {
+          final armAngle = (i / arms) * pi * 2;
+          final burstCount = 3 + attackPhase;
+          for (int j = 1; j <= burstCount; j++) {
+            Future.delayed(Duration(milliseconds: j * 80), () {
               if (isMounted) {
                 game.world.add(
                   bullet_component.Bullet(
                     position: position.clone(),
-                    angle: angle - pi / 2,
+                    angle: armAngle - pi / 2,
                     isPlayerBullet: false,
                   ),
                 );
               }
             });
           }
+        }
+        break;
+      case 2:
+        // 新增：雙螺旋彈幕（狂暴階段）
+        _executeSpiral(16, 0.12);
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (isMounted) _executeSpiral(16, -0.12);
+        });
+        break;
+      case 3:
+        // 新增：全方位爆發（狂暴階段）
+        for (int wave = 0; wave < 3; wave++) {
+          Future.delayed(Duration(milliseconds: wave * 150), () {
+            if (isMounted) {
+              final waveCount = ringCount + wave * 4;
+              for (int i = 0; i < waveCount; i++) {
+                final bulletAngle = (i / waveCount) * pi * 2 + wave * 0.2;
+                game.world.add(
+                  bullet_component.Bullet(
+                    position: position.clone(),
+                    angle: bulletAngle - pi / 2,
+                    isPlayerBullet: false,
+                  ),
+                );
+              }
+            }
+          });
         }
         break;
     }
@@ -1022,19 +1580,66 @@ class Boss extends PositionComponent
     final direction = (playerPos - position).normalized();
     final baseAngle = atan2(direction.x, -direction.y);
 
-    for (int i = -1; i <= 1; i++) {
-      game.world.add(
-        bullet_component.Bullet(
-          position: position + Vector2(0, size.y / 2),
-          angle: baseAngle + i * 0.15,
-          isPlayerBullet: false,
-        ),
-      );
+    final count = 1 + attackPhase;
+
+    switch (attackPattern % 3) {
+      case 0:
+        // 追蹤扇形
+        for (int i = -count; i <= count; i++) {
+          game.world.add(
+            bullet_component.Bullet(
+              position: position + Vector2(0, size.y / 2),
+              angle: baseAngle + i * 0.12,
+              isPlayerBullet: false,
+            ),
+          );
+        }
+        break;
+      case 1:
+        // 分裂攻擊 - 瞬移後從多個位置射擊
+        for (int side = -1; side <= 1; side += 2) {
+          game.world.add(
+            bullet_component.Bullet(
+              position: position + Vector2(side * 30.0, size.y / 2),
+              angle: baseAngle,
+              isPlayerBullet: false,
+            ),
+          );
+        }
+        break;
+      case 2:
+        // 狂暴連射
+        if (isEnraged) {
+          for (int burst = 0; burst < 3; burst++) {
+            Future.delayed(Duration(milliseconds: burst * 100), () {
+              if (isMounted) {
+                final burstAngle = baseAngle + (burst - 1) * 0.1;
+                game.world.add(
+                  bullet_component.Bullet(
+                    position: position + Vector2(0, size.y / 2),
+                    angle: burstAngle,
+                    isPlayerBullet: false,
+                  ),
+                );
+              }
+            });
+          }
+        } else {
+          game.world.add(
+            bullet_component.Bullet(
+              position: position + Vector2(0, size.y / 2),
+              angle: baseAngle,
+              isPlayerBullet: false,
+            ),
+          );
+        }
+        break;
     }
+    attackPattern++;
   }
 
-  void takeDamage() {
-    health--;
+  void takeDamage([int damage = 1]) {
+    health -= damage;
     if (health <= 0) {
       _onDestroyed();
     }
@@ -1079,17 +1684,21 @@ class Boss extends PositionComponent
     super.onCollisionStart(intersectionPoints, other);
 
     if (other is bullet_component.Bullet && other.isPlayerBullet) {
-      other.removeFromParent();
-      takeDamage();
+      final damage = other.getDamage();
+      if (!other.isPiercing) {
+        other.removeFromParent();
+      }
+      takeDamage(damage);
     }
   }
 }
 
 /// 敵人生成器配置
 class EnemySpawnConfig {
+  static final _random = Random();
+
   static EnemyType getRandomType(int wave) {
-    final random = Random();
-    final roll = random.nextDouble();
+    final roll = _random.nextDouble();
 
     // 根據波數調整敵人出現機率
     if (wave < 3) {
@@ -1097,17 +1706,83 @@ class EnemySpawnConfig {
       return roll < 0.7 ? EnemyType.basic : EnemyType.fast;
     } else if (wave < 6) {
       // 中期加入更多種類
-      if (roll < 0.4) return EnemyType.basic;
-      if (roll < 0.6) return EnemyType.fast;
-      if (roll < 0.8) return EnemyType.zigzag;
-      return EnemyType.shooter;
+      if (roll < 0.35) return EnemyType.basic;
+      if (roll < 0.55) return EnemyType.fast;
+      if (roll < 0.70) return EnemyType.zigzag;
+      if (roll < 0.85) return EnemyType.shooter;
+      return EnemyType.tracker;
+    } else if (wave < 10) {
+      // 中後期引入更多種類
+      if (roll < 0.20) return EnemyType.basic;
+      if (roll < 0.35) return EnemyType.fast;
+      if (roll < 0.50) return EnemyType.zigzag;
+      if (roll < 0.65) return EnemyType.shooter;
+      if (roll < 0.80) return EnemyType.tracker;
+      if (roll < 0.90) return EnemyType.diver;
+      return EnemyType.orbiter;
     } else {
       // 後期全種類
-      if (roll < 0.25) return EnemyType.basic;
-      if (roll < 0.4) return EnemyType.fast;
-      if (roll < 0.55) return EnemyType.zigzag;
-      if (roll < 0.75) return EnemyType.shooter;
+      if (roll < 0.15) return EnemyType.basic;
+      if (roll < 0.25) return EnemyType.fast;
+      if (roll < 0.35) return EnemyType.zigzag;
+      if (roll < 0.50) return EnemyType.shooter;
+      if (roll < 0.65) return EnemyType.tracker;
+      if (roll < 0.75) return EnemyType.diver;
+      if (roll < 0.85) return EnemyType.orbiter;
       return EnemyType.tank;
+    }
+  }
+
+  /// 根據波數獲取隨機生成方向
+  static SpawnDirection getRandomDirection(int wave) {
+    final roll = _random.nextDouble();
+
+    if (wave < 4) {
+      // 前期只從上方
+      return SpawnDirection.top;
+    } else if (wave < 7) {
+      // 中期引入側面
+      if (roll < 0.6) return SpawnDirection.top;
+      if (roll < 0.8) return SpawnDirection.left;
+      return SpawnDirection.right;
+    } else {
+      // 後期全方向
+      if (roll < 0.4) return SpawnDirection.top;
+      if (roll < 0.55) return SpawnDirection.left;
+      if (roll < 0.70) return SpawnDirection.right;
+      if (roll < 0.85) return SpawnDirection.topLeft;
+      return SpawnDirection.topRight;
+    }
+  }
+
+  /// 根據生成方向獲取初始位置
+  static Vector2 getSpawnPosition(SpawnDirection direction, Vector2 gameSize) {
+    switch (direction) {
+      case SpawnDirection.top:
+        return Vector2(
+          _random.nextDouble() * (gameSize.x - 80) + 40,
+          -60,
+        );
+      case SpawnDirection.left:
+        return Vector2(
+          -60,
+          _random.nextDouble() * (gameSize.y * 0.4) + 50,
+        );
+      case SpawnDirection.right:
+        return Vector2(
+          gameSize.x + 60,
+          _random.nextDouble() * (gameSize.y * 0.4) + 50,
+        );
+      case SpawnDirection.topLeft:
+        return Vector2(
+          -60,
+          -60,
+        );
+      case SpawnDirection.topRight:
+        return Vector2(
+          gameSize.x + 60,
+          -60,
+        );
     }
   }
 }

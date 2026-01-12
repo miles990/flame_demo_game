@@ -110,12 +110,12 @@ class SpaceGame extends FlameGame
     enemySpawner = SpawnComponent(
       factory: (_) {
         final enemyType = EnemySpawnConfig.getRandomType(wave);
+        final direction = EnemySpawnConfig.getRandomDirection(wave);
+        final spawnPos = EnemySpawnConfig.getSpawnPosition(direction, size);
         return Enemy(
-          position: Vector2(
-            _random.nextDouble() * (size.x - 80) + 40,
-            -60,
-          ),
+          position: spawnPos,
           type: enemyType,
+          spawnDirection: direction,
         );
       },
       period: spawnInterval,

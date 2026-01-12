@@ -4,6 +4,7 @@ import 'package:flame/components.dart';
 
 import '../game/space_game.dart';
 import 'enemy.dart';
+import 'power_up.dart';
 
 /// 敵人編隊類型
 enum FormationType {
@@ -21,6 +22,11 @@ class EnemyFormation extends Component with HasGameReference<SpaceGame> {
   final int count;
   final Vector2 startPosition;
   final double spacing;
+  final String formationId;  // 編隊識別碼
+
+  // 追蹤編隊成員
+  final List<FormationEnemy> _members = [];
+  bool _bonusDropped = false;
 
   EnemyFormation({
     required this.type,
@@ -28,7 +34,7 @@ class EnemyFormation extends Component with HasGameReference<SpaceGame> {
     this.count = 5,
     required this.startPosition,
     this.spacing = 60,
-  });
+  }) : formationId = '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(1000)}';
 
   @override
   Future<void> onLoad() async {
@@ -38,13 +44,40 @@ class EnemyFormation extends Component with HasGameReference<SpaceGame> {
       // 依序生成，有延遲效果
       Future.delayed(Duration(milliseconds: i * 100), () {
         if (isMounted && game.isPlaying) {
-          game.world.add(Enemy(
+          final enemy = FormationEnemy(
             position: positions[i],
             type: enemyType,
-          ));
+            formation: this,
+          );
+          _members.add(enemy);
+          game.world.add(enemy);
         }
       });
     }
+  }
+
+  /// 當編隊成員被擊殺時調用
+  void onMemberKilled(FormationEnemy member, Vector2 deathPosition) {
+    _members.remove(member);
+
+    // 檢查是否全部被消滅
+    if (_members.isEmpty && !_bonusDropped) {
+      _bonusDropped = true;
+      _dropFormationBonus(deathPosition);
+    }
+  }
+
+  /// 掉落編隊 bonus 道具
+  void _dropFormationBonus(Vector2 position) {
+    final bonusType = PowerUpSpawner.getFormationBonusType();
+    game.world.add(PowerUp(
+      position: position,
+      type: bonusType,
+    ));
+
+    // 額外分數獎勵
+    game.addScore(200);
+    debugPrint('Formation wiped! Bonus dropped: ${bonusType.name}');
   }
 
   List<Vector2> _calculatePositions() {
@@ -133,6 +166,43 @@ class EnemyFormation extends Component with HasGameReference<SpaceGame> {
     }
 
     return positions;
+  }
+}
+
+/// 編隊敵人（繼承自 Enemy，但有編隊追蹤功能）
+class FormationEnemy extends Enemy {
+  final EnemyFormation formation;
+
+  FormationEnemy({
+    required super.position,
+    required super.type,
+    required this.formation,
+    super.spawnDirection = SpawnDirection.top,
+  });
+
+  @override
+  void _onDestroyed() {
+    // 通知編隊
+    formation.onMemberKilled(this, position.clone());
+
+    // 編隊敵人不個別掉落道具（由編隊 bonus 統一掉落）
+    // 但仍然計算分數
+    final score = switch (type) {
+      EnemyType.basic => 100,
+      EnemyType.fast => 150,
+      EnemyType.tank => 300,
+      EnemyType.shooter => 250,
+      EnemyType.zigzag => 120,
+      EnemyType.tracker => 200,
+      EnemyType.diver => 180,
+      EnemyType.orbiter => 220,
+    };
+    game.addScore(score);
+    game.onEnemyKilled();
+
+    // 爆炸效果
+    game.world.add(Explosion(position: position.clone()));
+    removeFromParent();
   }
 }
 
