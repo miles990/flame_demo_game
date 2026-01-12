@@ -71,7 +71,7 @@ A retro-style arcade space shooting game built with **Flutter** and **Flame Engi
 This project demonstrates **AI-assisted game development** using the self-evolving-agent workflow:
 
 ### Step 1: Create Domain Skill
-First, a [Flame Engine skill](https://github.com/miles990/self-evolving-agent/blob/main/skills/flame-game-dev/SKILL.md) was created based on the [Flame Engine documentation](https://github.com/flame-engine/flame). This skill encapsulates:
+First, a [Flame Engine skill](./skills/flame-game-dev/SKILL.md) was created based on the [Flame Engine documentation](https://github.com/flame-engine/flame). This skill encapsulates:
 - Flame architecture patterns (FlameGame, Components, World/Camera)
 - Input handling (keyboard, touch, joystick)
 - Collision detection system
