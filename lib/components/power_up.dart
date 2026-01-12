@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 
 import '../game/space_game.dart';
 import 'player.dart';
+import 'enemy.dart' show Enemy, Boss;
+import 'bullet.dart' show Bullet;
 export 'player.dart' show WeaponType;
 
 /// 道具類型
@@ -260,17 +262,35 @@ class PowerUp extends PositionComponent
   }
 
   void _triggerBomb() {
-    // 清除所有敵人（使用 import 的 Enemy 類型）
-    final enemies = game.world.children.whereType<PositionComponent>().where((c) {
-      final typeName = c.runtimeType.toString();
-      return typeName == 'Enemy' || typeName == 'FormationEnemy';
-    }).toList();
+    // 收集所有 Enemy 類型（包括繼承的子類）
+    // 注意：FormationEnemy 繼承自 Enemy，所以會被 whereType<Enemy> 抓到
+    final enemies = game.world.children.whereType<Enemy>().toList();
+
+    debugPrint('[Bomb] Found ${enemies.length} enemies to destroy');
 
     for (final enemy in enemies) {
-      game.addScore(50);
-      // 添加爆炸效果
-      game.world.add(_BombExplosion(position: (enemy as PositionComponent).position.clone()));
-      enemy.removeFromParent();
+      // Boss 不會被炸彈一擊殺死，但會受到傷害
+      if (enemy is Boss) {
+        enemy.takeDamage(3);  // 對 Boss 造成 3 點傷害
+        game.addScore(100);
+      } else {
+        game.addScore(50);
+        // 添加爆炸效果
+        game.world.add(_BombExplosion(position: enemy.position.clone()));
+        enemy.removeFromParent();
+      }
+    }
+
+    // 清除所有敵人子彈
+    final enemyBullets = game.world.children
+        .whereType<Bullet>()
+        .where((b) => !b.isPlayerBullet)
+        .toList();
+
+    debugPrint('[Bomb] Clearing ${enemyBullets.length} enemy bullets');
+
+    for (final bullet in enemyBullets) {
+      bullet.removeFromParent();
     }
   }
 }
