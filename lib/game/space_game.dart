@@ -7,13 +7,14 @@ import 'package:flutter/material.dart';
 
 import '../components/bullet.dart';
 import '../components/enemy.dart';
+import '../components/enemy_formation.dart';
 import '../components/hud.dart';
 import '../components/player.dart';
 import '../components/power_up.dart';
 import '../components/star_background.dart';
 
 class SpaceGame extends FlameGame
-    with HasCollisionDetection, HasKeyboardHandlerComponents, TapCallbacks {
+    with HasCollisionDetection, HasKeyboardHandlerComponents, TapCallbacks, DragCallbacks {
 
   late Player player;
   SpawnComponent? enemySpawner;
@@ -28,6 +29,14 @@ class SpaceGame extends FlameGame
   int enemiesPerWave = 10;
   bool isBossBattle = false;
   Boss? currentBoss;
+
+  // 敵人群計時器
+  double _formationTimer = 0;
+  double _formationInterval = 8.0;
+
+  // 觸控控制
+  Vector2? _touchStartPosition;
+  bool _isTouchShooting = false;
 
   final Random _random = Random();
 
@@ -207,6 +216,82 @@ class SpaceGame extends FlameGame
 
   // 是否正在 Boss 戰
   bool get inBossBattle => isBossBattle;
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+
+    if (!isPlaying || isBossBattle) return;
+
+    // 定期生成敵人編隊
+    _formationTimer += dt;
+    if (_formationTimer >= _formationInterval) {
+      _formationTimer = 0;
+      // 根據波數調整編隊生成間隔
+      _formationInterval = (10.0 - wave * 0.3).clamp(4.0, 10.0);
+      FormationSpawner.spawnFormation(this, wave);
+    }
+  }
+
+  // 觸控控制支援
+  @override
+  void onTapDown(TapDownEvent event) {
+    if (!isPlaying) return;
+    _isTouchShooting = true;
+    player.isShooting = true;
+  }
+
+  @override
+  void onTapUp(TapUpEvent event) {
+    _isTouchShooting = false;
+    player.isShooting = false;
+  }
+
+  @override
+  void onTapCancel(TapCancelEvent event) {
+    _isTouchShooting = false;
+    player.isShooting = false;
+  }
+
+  @override
+  void onDragStart(DragStartEvent event) {
+    if (!isPlaying) return;
+    _touchStartPosition = event.localPosition;
+    _isTouchShooting = true;
+    player.isShooting = true;
+  }
+
+  @override
+  void onDragUpdate(DragUpdateEvent event) {
+    if (!isPlaying || _touchStartPosition == null) return;
+
+    // 移動玩家
+    player.position += event.localDelta;
+
+    // 限制在螢幕範圍內
+    player.position.x = player.position.x.clamp(
+      player.size.x / 2,
+      size.x - player.size.x / 2,
+    );
+    player.position.y = player.position.y.clamp(
+      player.size.y / 2,
+      size.y - player.size.y / 2,
+    );
+  }
+
+  @override
+  void onDragEnd(DragEndEvent event) {
+    _touchStartPosition = null;
+    _isTouchShooting = false;
+    player.isShooting = false;
+  }
+
+  @override
+  void onDragCancel(DragCancelEvent event) {
+    _touchStartPosition = null;
+    _isTouchShooting = false;
+    player.isShooting = false;
+  }
 
   @override
   Color backgroundColor() => const Color(0xFF0a0a1a);
