@@ -198,14 +198,18 @@ class PowerUp extends PositionComponent
   ) {
     super.onCollisionStart(intersectionPoints, other);
 
+    print('[PowerUp] onCollisionStart with ${other.runtimeType}, type=$type');
+
     if (other is Player) {
       // 套用道具效果
+      print('[PowerUp] Applying effect: $type');
       _applyEffect(other);
       removeFromParent();
     }
   }
 
   void _applyEffect(Player player) {
+    print('[PowerUp] _applyEffect called for type: $type');
     switch (type) {
       case PowerUpType.weaponUpgrade:
         player.upgradeWeapon();
@@ -220,6 +224,7 @@ class PowerUp extends PositionComponent
         player.activateRapidFire();
         break;
       case PowerUpType.bomb:
+        print('[PowerUp] BOMB case - calling _triggerBomb()');
         _triggerBomb();
         break;
       case PowerUpType.extraLife:
