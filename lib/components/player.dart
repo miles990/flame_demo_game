@@ -530,6 +530,13 @@ class Player extends PositionComponent
       return true;
     }
 
+    // 作弊模式：按 B 鍵觸發 Bomb 效果（用於測試）
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyB) {
+      _triggerBombCheat();
+      return true;
+    }
+
     horizontalDirection = 0;
     verticalDirection = 0;
 
@@ -555,6 +562,36 @@ class Player extends PositionComponent
     return true;
   }
 
+  /// 作弊模式：直接觸發 Bomb 效果（用於測試）
+  void _triggerBombCheat() {
+    // 添加全屏閃光效果
+    game.world.add(_BombFlashCheat(gameSize: game.size));
+
+    // 收集並消滅所有敵人
+    final enemies = game.world.children.whereType<enemy_component.Enemy>().toList();
+    for (final enemy in enemies) {
+      game.addScore(50);
+      game.world.add(_BombExplosionCheat(position: enemy.position.clone()));
+      enemy.removeFromParent();
+    }
+
+    // 對 Boss 造成傷害
+    final bosses = game.world.children.whereType<enemy_component.Boss>().toList();
+    for (final boss in bosses) {
+      boss.takeDamage(3);
+      game.addScore(100);
+    }
+
+    // 清除敵人子彈
+    final bullets = game.world.children
+        .whereType<bullet_component.Bullet>()
+        .where((b) => !b.isPlayerBullet)
+        .toList();
+    for (final bullet in bullets) {
+      bullet.removeFromParent();
+    }
+  }
+
   @override
   void onCollisionStart(
     Set<Vector2> intersectionPoints,
@@ -571,5 +608,69 @@ class Player extends PositionComponent
       other.removeFromParent();
       takeDamage();
     }
+  }
+}
+
+/// Bomb 全屏閃光效果（作弊用）
+class _BombFlashCheat extends PositionComponent {
+  final Vector2 gameSize;
+
+  _BombFlashCheat({required this.gameSize})
+      : super(
+          position: Vector2.zero(),
+          size: gameSize,
+          priority: 1000,
+        );
+
+  double lifetime = 0;
+  final double maxLifetime = 0.3;
+
+  @override
+  void render(Canvas canvas) {
+    final progress = (lifetime / maxLifetime).clamp(0.0, 1.0);
+    final opacity = (1.0 - progress) * 0.8;
+    final flashPaint = Paint()
+      ..color = Color.fromRGBO(255, 100, 100, opacity);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.x, size.y), flashPaint);
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    lifetime += dt;
+    if (lifetime >= maxLifetime) removeFromParent();
+  }
+}
+
+/// Bomb 爆炸效果（作弊用）
+class _BombExplosionCheat extends PositionComponent {
+  _BombExplosionCheat({required super.position})
+      : super(size: Vector2.all(80), anchor: Anchor.center);
+
+  double lifetime = 0;
+  final double maxLifetime = 0.4;
+
+  @override
+  void render(Canvas canvas) {
+    final progress = (lifetime / maxLifetime).clamp(0.0, 1.0);
+    final opacity = (1.0 - progress).clamp(0.0, 1.0);
+    final scale = 1.0 + progress * 1.5;
+
+    final outerPaint = Paint()
+      ..color = Color.fromRGBO(255, 68, 0, opacity * 0.6)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+    canvas.drawCircle(Offset(size.x / 2, size.y / 2), (size.x / 2) * scale, outerPaint);
+
+    final innerPaint = Paint()
+      ..color = Color.fromRGBO(255, 255, 0, opacity)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size.x / 2, size.y / 2), (size.x / 3) * scale, innerPaint);
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    lifetime += dt;
+    if (lifetime >= maxLifetime) removeFromParent();
   }
 }
