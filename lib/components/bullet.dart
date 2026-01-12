@@ -18,25 +18,50 @@ enum BulletType {
   plasmaSmall,  // 小電漿
   plasmaLarge,  // 大電漿
   enemy,        // 敵人子彈
+  // 新增 Boss 曲線彈幕類型
+  enemySine,    // 正弦波彈幕
+  enemySpiral,  // 螺旋彈幕
+  enemyHoming,  // 追蹤彈幕
 }
 
 class Bullet extends PositionComponent with HasGameReference<SpaceGame>, CollisionCallbacks {
   final double angle;
   final bool isPlayerBullet;
   final BulletType bulletType;
+  final double speedMultiplier;  // 速度倍率（用於難度調整）
+
+  // 曲線彈幕參數
+  double _time = 0;
+  double _sineAmplitude = 0;
+  double _sineFrequency = 0;
+  double _spiralSpeed = 0;
+  bool _isHomingEnemy = false;
 
   Bullet({
     required super.position,
     this.angle = 0,
     this.isPlayerBullet = true,
     this.bulletType = BulletType.standard,
+    this.speedMultiplier = 1.0,  // 預設速度倍率
   }) : super(
           size: _getSizeByType(bulletType, isPlayerBullet),
           anchor: Anchor.center,
         );
 
   static Vector2 _getSizeByType(BulletType type, bool isPlayer) {
-    if (!isPlayer) return Vector2(6, 20);
+    if (!isPlayer) {
+      // 敵人子彈類型大小
+      switch (type) {
+        case BulletType.enemySine:
+          return Vector2(8, 8);  // 圓形
+        case BulletType.enemySpiral:
+          return Vector2(10, 10);  // 較大圓形
+        case BulletType.enemyHoming:
+          return Vector2(6, 12);  // 箭頭形
+        default:
+          return Vector2(6, 20);
+      }
+    }
 
     switch (type) {
       case BulletType.standard:
@@ -56,6 +81,9 @@ class Bullet extends PositionComponent with HasGameReference<SpaceGame>, Collisi
       case BulletType.plasmaLarge:
         return Vector2(18, 18);
       case BulletType.enemy:
+      case BulletType.enemySine:
+      case BulletType.enemySpiral:
+      case BulletType.enemyHoming:
         return Vector2(6, 20);
     }
   }
@@ -134,8 +162,28 @@ class Bullet extends PositionComponent with HasGameReference<SpaceGame>, Collisi
         damage = 4;
         break;
       case BulletType.enemy:
-        speed = 300;
+        // 基礎敵人子彈速度調慢（從 300 降到 180）
+        speed = 180 * speedMultiplier;
         damage = 1;
+        break;
+      case BulletType.enemySine:
+        // 正弦波彈幕 - 較慢但有曲線
+        speed = 150 * speedMultiplier;
+        damage = 1;
+        _sineAmplitude = 60;
+        _sineFrequency = 4;
+        break;
+      case BulletType.enemySpiral:
+        // 螺旋彈幕 - 旋轉前進
+        speed = 120 * speedMultiplier;
+        damage = 1;
+        _spiralSpeed = 3;
+        break;
+      case BulletType.enemyHoming:
+        // 追蹤彈幕 - 緩慢追蹤
+        speed = 100 * speedMultiplier;
+        damage = 1;
+        _isHomingEnemy = true;
         break;
     }
   }
@@ -143,8 +191,20 @@ class Bullet extends PositionComponent with HasGameReference<SpaceGame>, Collisi
   @override
   void render(Canvas canvas) {
     if (!isPlayerBullet) {
-      _renderEnemyBullet(canvas);
-      return;
+      switch (bulletType) {
+        case BulletType.enemySine:
+          _renderSineBullet(canvas);
+          return;
+        case BulletType.enemySpiral:
+          _renderSpiralBullet(canvas);
+          return;
+        case BulletType.enemyHoming:
+          _renderHomingEnemyBullet(canvas);
+          return;
+        default:
+          _renderEnemyBullet(canvas);
+          return;
+      }
     }
 
     switch (bulletType) {
@@ -169,9 +229,110 @@ class Bullet extends PositionComponent with HasGameReference<SpaceGame>, Collisi
         _renderPlasmaBullet(canvas);
         break;
       case BulletType.enemy:
+      case BulletType.enemySine:
+      case BulletType.enemySpiral:
+      case BulletType.enemyHoming:
         _renderEnemyBullet(canvas);
         break;
     }
+  }
+
+  /// 正弦波彈幕外觀 - 藍紫色波動球
+  void _renderSineBullet(Canvas canvas) {
+    final center = Offset(size.x / 2, size.y / 2);
+    final pulse = 1.0 + sin(_time * 8) * 0.2;
+
+    // 外層光暈
+    final glowPaint = Paint()
+      ..color = const Color(0xFF6644FF).withOpacity(0.5)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    canvas.drawCircle(center, size.x / 2 * pulse + 3, glowPaint);
+
+    // 核心
+    final corePaint = Paint()
+      ..color = const Color(0xFFAA88FF)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, size.x / 2 * pulse, corePaint);
+
+    // 內核
+    final innerPaint = Paint()
+      ..color = Colors.white.withOpacity(0.8);
+    canvas.drawCircle(center, size.x / 4, innerPaint);
+  }
+
+  /// 螺旋彈幕外觀 - 橙紅色旋轉球
+  void _renderSpiralBullet(Canvas canvas) {
+    final center = Offset(size.x / 2, size.y / 2);
+
+    // 外層旋轉光暈
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(_time * 5);
+
+    final glowPaint = Paint()
+      ..color = const Color(0xFFFF6600).withOpacity(0.4)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+
+    // 旋轉的光芒
+    for (int i = 0; i < 3; i++) {
+      final angle = (i / 3) * pi * 2;
+      canvas.drawCircle(
+        Offset(cos(angle) * 4, sin(angle) * 4),
+        size.x / 3,
+        glowPaint,
+      );
+    }
+
+    canvas.restore();
+
+    // 核心
+    final corePaint = Paint()
+      ..color = const Color(0xFFFF4400)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, size.x / 2.5, corePaint);
+
+    // 亮點
+    final brightPaint = Paint()
+      ..color = const Color(0xFFFFAA00);
+    canvas.drawCircle(Offset(center.dx - 2, center.dy - 2), 3, brightPaint);
+  }
+
+  /// 追蹤彈幕外觀 - 綠色箭頭
+  void _renderHomingEnemyBullet(Canvas canvas) {
+    // 計算朝向（根據速度方向）
+    final rotation = atan2(velocity.x, -velocity.y);
+
+    canvas.save();
+    canvas.translate(size.x / 2, size.y / 2);
+    canvas.rotate(rotation);
+
+    // 光暈
+    final glowPaint = Paint()
+      ..color = const Color(0xFF00FF44).withOpacity(0.4)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    canvas.drawCircle(Offset.zero, size.x / 2 + 3, glowPaint);
+
+    // 箭頭形狀
+    final arrowPaint = Paint()
+      ..color = const Color(0xFF00CC44)
+      ..style = PaintingStyle.fill;
+
+    final path = Path()
+      ..moveTo(0, -size.y / 2)
+      ..lineTo(size.x / 2, size.y / 3)
+      ..lineTo(0, size.y / 6)
+      ..lineTo(-size.x / 2, size.y / 3)
+      ..close();
+
+    canvas.drawPath(path, arrowPaint);
+
+    // 尾焰
+    final flamePaint = Paint()
+      ..color = const Color(0xFF88FF88).withOpacity(0.6)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawCircle(Offset(0, size.y / 3), 4, flamePaint);
+
+    canvas.restore();
   }
 
   void _renderStandardBullet(Canvas canvas, Color bulletColor) {
@@ -334,15 +495,84 @@ class Bullet extends PositionComponent with HasGameReference<SpaceGame>, Collisi
   @override
   void update(double dt) {
     super.update(dt);
+    _time += dt;
 
-    // 飛彈追蹤邏輯
+    // 飛彈追蹤邏輯（玩家）
     if (isHoming && isPlayerBullet) {
       _updateHoming(dt);
+    }
+
+    // 敵人曲線彈幕邏輯
+    if (!isPlayerBullet) {
+      switch (bulletType) {
+        case BulletType.enemySine:
+          _updateSineBullet(dt);
+          return;
+        case BulletType.enemySpiral:
+          _updateSpiralBullet(dt);
+          return;
+        case BulletType.enemyHoming:
+          _updateHomingEnemyBullet(dt);
+          return;
+        default:
+          break;
+      }
     }
 
     position += velocity * dt;
 
     // Remove if off screen
+    if (position.y < -50 || position.y > game.size.y + 50 ||
+        position.x < -50 || position.x > game.size.x + 50) {
+      removeFromParent();
+    }
+  }
+
+  /// 正弦波彈幕移動
+  void _updateSineBullet(double dt) {
+    // 基本向下移動
+    position.y += speed * dt;
+
+    // 正弦波左右擺動
+    final sineOffset = sin(_time * _sineFrequency) * _sineAmplitude * dt * 10;
+    position.x += sineOffset;
+
+    _checkBounds();
+  }
+
+  /// 螺旋彈幕移動
+  void _updateSpiralBullet(double dt) {
+    // 螺旋軌跡
+    final spiralAngle = _time * _spiralSpeed;
+    final radius = 30 + _time * 20;  // 逐漸擴大的螺旋
+
+    // 基礎向下移動 + 螺旋偏移
+    position.y += speed * dt;
+    position.x += cos(spiralAngle) * radius * dt;
+
+    _checkBounds();
+  }
+
+  /// 敵人追蹤彈幕
+  void _updateHomingEnemyBullet(double dt) {
+    // 找玩家位置
+    final playerPos = game.player.position;
+    final toPlayer = (playerPos - position);
+
+    if (toPlayer.length > 10) {
+      final targetDirection = toPlayer.normalized();
+      final currentDirection = velocity.normalized();
+
+      // 緩慢轉向玩家（追蹤強度較低）
+      final newDirection = (currentDirection + targetDirection * 1.5 * dt).normalized();
+      velocity = newDirection * speed;
+    }
+
+    position += velocity * dt;
+    _checkBounds();
+  }
+
+  void _checkBounds() {
     if (position.y < -50 || position.y > game.size.y + 50 ||
         position.x < -50 || position.x > game.size.x + 50) {
       removeFromParent();

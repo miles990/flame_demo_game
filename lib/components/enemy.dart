@@ -1375,8 +1375,19 @@ class Boss extends PositionComponent
     }
   }
 
+  // 根據攻擊階段計算子彈速度倍率（初期慢，後期快）
+  double get _bulletSpeedMultiplier {
+    switch (attackPhase) {
+      case 1: return 0.7;   // 階段1：較慢
+      case 2: return 0.9;   // 階段2：中等
+      case 3: return 1.1;   // 階段3：較快
+      default: return 0.7;
+    }
+  }
+
   void _executeDestroyerAttack() {
     final bulletCount = 5 + attackPhase * 2;
+    final speedMult = _bulletSpeedMultiplier;
 
     switch (attackPattern) {
       case 0:
@@ -1387,6 +1398,7 @@ class Boss extends PositionComponent
               position: position + Vector2(0, size.y / 2),
               angle: i * 0.15,
               isPlayerBullet: false,
+              speedMultiplier: speedMult,
             ),
           );
         }
@@ -1401,6 +1413,7 @@ class Boss extends PositionComponent
               position: position + Vector2(offset, size.y / 2),
               angle: 0,
               isPlayerBullet: false,
+              speedMultiplier: speedMult,
             ),
           );
         }
@@ -1415,24 +1428,68 @@ class Boss extends PositionComponent
               position: position + Vector2(0, size.y / 2),
               angle: angle - pi / 2,
               isPlayerBullet: false,
+              speedMultiplier: speedMult,
             ),
           );
         }
         break;
       case 3:
-        // 新增：螺旋彈幕（狂暴階段）
-        _executeSpiral(12, 0.1);
+        // 新增：正弦波彈幕（曲線移動）
+        _executeSineWave(8 + attackPhase * 2);
         break;
       case 4:
-        // 新增：追蹤彈幕（狂暴階段）
-        _executeHomingBurst();
+        // 新增：螺旋曲線彈幕
+        _executeSpiralCurve(6 + attackPhase);
         break;
     }
   }
 
-  void _executeSpiral(int count, double angleOffset) {
+  /// 正弦波彈幕 - 曲線移動
+  void _executeSineWave(int count) {
     for (int i = 0; i < count; i++) {
-      final delay = i * 50;
+      final delay = i * 80;
+      Future.delayed(Duration(milliseconds: delay), () {
+        if (isMounted) {
+          final xOffset = (i - count / 2) * 25.0;
+          game.world.add(
+            bullet_component.Bullet(
+              position: position + Vector2(xOffset, size.y / 2),
+              angle: 0,
+              isPlayerBullet: false,
+              bulletType: bullet_component.BulletType.enemySine,
+              speedMultiplier: _bulletSpeedMultiplier,
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  /// 螺旋曲線彈幕
+  void _executeSpiralCurve(int count) {
+    for (int i = 0; i < count; i++) {
+      final delay = i * 100;
+      Future.delayed(Duration(milliseconds: delay), () {
+        if (isMounted) {
+          final angle = (i / count) * pi * 2;
+          game.world.add(
+            bullet_component.Bullet(
+              position: position + Vector2(cos(angle) * 20, size.y / 2 + sin(angle) * 10),
+              angle: angle * 0.3,
+              isPlayerBullet: false,
+              bulletType: bullet_component.BulletType.enemySpiral,
+              speedMultiplier: _bulletSpeedMultiplier,
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  void _executeSpiral(int count, double angleOffset) {
+    final speedMult = _bulletSpeedMultiplier;
+    for (int i = 0; i < count; i++) {
+      final delay = i * 60;  // 稍微調慢間隔
       Future.delayed(Duration(milliseconds: delay), () {
         if (isMounted) {
           final angle = (time * 3 + i * angleOffset) % (pi * 2);
@@ -1441,6 +1498,7 @@ class Boss extends PositionComponent
               position: position.clone(),
               angle: angle - pi / 2,
               isPlayerBullet: false,
+              speedMultiplier: speedMult,
             ),
           );
         }
@@ -1452,13 +1510,17 @@ class Boss extends PositionComponent
     final playerPos = game.player.position;
     final direction = (playerPos - position).normalized();
     final baseAngle = atan2(direction.x, -direction.y);
+    final speedMult = _bulletSpeedMultiplier;
 
+    // 改用追蹤彈幕類型
     for (int i = -2; i <= 2; i++) {
       game.world.add(
         bullet_component.Bullet(
           position: position + Vector2(0, size.y / 2),
           angle: baseAngle + i * 0.12,
           isPlayerBullet: false,
+          bulletType: bullet_component.BulletType.enemyHoming,
+          speedMultiplier: speedMult,
         ),
       );
     }
@@ -1466,8 +1528,9 @@ class Boss extends PositionComponent
 
   void _executeCarrierAttack() {
     final count = 3 + attackPhase * 2;
+    final speedMult = _bulletSpeedMultiplier;
 
-    switch (attackPattern % 3) {
+    switch (attackPattern % 4) {
       case 0:
         // 寬範圍攻擊
         for (int i = -count; i <= count; i++) {
@@ -1476,22 +1539,25 @@ class Boss extends PositionComponent
               position: position + Vector2(i * 22.0, size.y / 2),
               angle: 0,
               isPlayerBullet: false,
+              speedMultiplier: speedMult,
             ),
           );
         }
         break;
       case 1:
-        // 波浪彈幕
+        // 正弦波彈幕（曲線移動）
         for (int i = 0; i < count * 2; i++) {
-          final delay = i * 80;
+          final delay = i * 100;  // 調慢間隔
           Future.delayed(Duration(milliseconds: delay), () {
             if (isMounted) {
-              final xOffset = sin(i * 0.5) * 80;
+              final xOffset = sin(i * 0.5) * 60;
               game.world.add(
                 bullet_component.Bullet(
                   position: position + Vector2(xOffset, size.y / 2),
                   angle: 0,
                   isPlayerBullet: false,
+                  bulletType: bullet_component.BulletType.enemySine,
+                  speedMultiplier: speedMult,
                 ),
               );
             }
@@ -1499,8 +1565,12 @@ class Boss extends PositionComponent
         }
         break;
       case 2:
-        // 扇形追蹤
+        // 扇形追蹤彈幕
         _executeHomingBurst();
+        break;
+      case 3:
+        // 新增：螺旋曲線彈幕
+        _executeSpiralCurve(count);
         break;
     }
     attackPattern++;
@@ -1508,6 +1578,7 @@ class Boss extends PositionComponent
 
   void _executeFortressAttack() {
     final ringCount = 12 + attackPhase * 4;
+    final speedMult = _bulletSpeedMultiplier;
 
     switch (attackPattern) {
       case 0:
@@ -1519,24 +1590,27 @@ class Boss extends PositionComponent
               position: position + Vector2(0, 0),
               angle: bulletAngle - pi / 2,
               isPlayerBullet: false,
+              speedMultiplier: speedMult,
             ),
           );
         }
         break;
       case 1:
-        // 十字攻擊 - 連發數隨階段增加
-        final arms = 4 + (attackPhase > 2 ? 4 : 0);  // 8 臂攻擊
+        // 十字攻擊 - 連發數隨階段增加（使用螺旋彈幕）
+        final arms = 4 + (attackPhase > 2 ? 4 : 0);
         for (int i = 0; i < arms; i++) {
           final armAngle = (i / arms) * pi * 2;
           final burstCount = 3 + attackPhase;
           for (int j = 1; j <= burstCount; j++) {
-            Future.delayed(Duration(milliseconds: j * 80), () {
+            Future.delayed(Duration(milliseconds: j * 100), () {  // 調慢間隔
               if (isMounted) {
                 game.world.add(
                   bullet_component.Bullet(
                     position: position.clone(),
                     angle: armAngle - pi / 2,
                     isPlayerBullet: false,
+                    bulletType: bullet_component.BulletType.enemySpiral,
+                    speedMultiplier: speedMult,
                   ),
                 );
               }
@@ -1545,31 +1619,41 @@ class Boss extends PositionComponent
         }
         break;
       case 2:
-        // 新增：雙螺旋彈幕（狂暴階段）
-        _executeSpiral(16, 0.12);
-        Future.delayed(const Duration(milliseconds: 200), () {
-          if (isMounted) _executeSpiral(16, -0.12);
-        });
-        break;
-      case 3:
-        // 新增：全方位爆發（狂暴階段）
-        for (int wave = 0; wave < 3; wave++) {
-          Future.delayed(Duration(milliseconds: wave * 150), () {
+        // 雙向正弦波彈幕（曲線）
+        for (int i = 0; i < 10; i++) {
+          final delay = i * 80;
+          Future.delayed(Duration(milliseconds: delay), () {
             if (isMounted) {
-              final waveCount = ringCount + wave * 4;
-              for (int i = 0; i < waveCount; i++) {
-                final bulletAngle = (i / waveCount) * pi * 2 + wave * 0.2;
-                game.world.add(
-                  bullet_component.Bullet(
-                    position: position.clone(),
-                    angle: bulletAngle - pi / 2,
-                    isPlayerBullet: false,
-                  ),
-                );
-              }
+              // 左側
+              game.world.add(
+                bullet_component.Bullet(
+                  position: position + Vector2(-40, size.y / 2),
+                  angle: 0.3,
+                  isPlayerBullet: false,
+                  bulletType: bullet_component.BulletType.enemySine,
+                  speedMultiplier: speedMult,
+                ),
+              );
+              // 右側
+              game.world.add(
+                bullet_component.Bullet(
+                  position: position + Vector2(40, size.y / 2),
+                  angle: -0.3,
+                  isPlayerBullet: false,
+                  bulletType: bullet_component.BulletType.enemySine,
+                  speedMultiplier: speedMult,
+                ),
+              );
             }
           });
         }
+        break;
+      case 3:
+        // 追蹤彈幕 + 螺旋組合（狂暴階段）
+        _executeHomingBurst();
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (isMounted) _executeSpiralCurve(8);
+        });
         break;
     }
   }
@@ -1579,46 +1663,72 @@ class Boss extends PositionComponent
     final playerPos = game.player.position;
     final direction = (playerPos - position).normalized();
     final baseAngle = atan2(direction.x, -direction.y);
+    final speedMult = _bulletSpeedMultiplier;
 
     final count = 1 + attackPhase;
 
-    switch (attackPattern % 3) {
+    switch (attackPattern % 4) {
       case 0:
-        // 追蹤扇形
+        // 追蹤扇形（使用追蹤彈幕）
         for (int i = -count; i <= count; i++) {
           game.world.add(
             bullet_component.Bullet(
               position: position + Vector2(0, size.y / 2),
               angle: baseAngle + i * 0.12,
               isPlayerBullet: false,
+              bulletType: bullet_component.BulletType.enemyHoming,
+              speedMultiplier: speedMult,
             ),
           );
         }
         break;
       case 1:
-        // 分裂攻擊 - 瞬移後從多個位置射擊
+        // 分裂攻擊 - 正弦波從多個位置
         for (int side = -1; side <= 1; side += 2) {
           game.world.add(
             bullet_component.Bullet(
               position: position + Vector2(side * 30.0, size.y / 2),
-              angle: baseAngle,
+              angle: baseAngle + side * 0.2,
               isPlayerBullet: false,
+              bulletType: bullet_component.BulletType.enemySine,
+              speedMultiplier: speedMult,
             ),
           );
         }
         break;
       case 2:
-        // 狂暴連射
+        // 螺旋曲線攻擊
+        for (int i = 0; i < 4; i++) {
+          final delay = i * 80;
+          Future.delayed(Duration(milliseconds: delay), () {
+            if (isMounted) {
+              game.world.add(
+                bullet_component.Bullet(
+                  position: position + Vector2(0, size.y / 2),
+                  angle: baseAngle + (i - 1.5) * 0.15,
+                  isPlayerBullet: false,
+                  bulletType: bullet_component.BulletType.enemySpiral,
+                  speedMultiplier: speedMult,
+                ),
+              );
+            }
+          });
+        }
+        break;
+      case 3:
+        // 狂暴連射（使用追蹤彈幕）
         if (isEnraged) {
-          for (int burst = 0; burst < 3; burst++) {
-            Future.delayed(Duration(milliseconds: burst * 100), () {
+          for (int burst = 0; burst < 4; burst++) {
+            Future.delayed(Duration(milliseconds: burst * 120), () {
               if (isMounted) {
-                final burstAngle = baseAngle + (burst - 1) * 0.1;
+                final burstAngle = baseAngle + (burst - 1.5) * 0.08;
                 game.world.add(
                   bullet_component.Bullet(
                     position: position + Vector2(0, size.y / 2),
                     angle: burstAngle,
                     isPlayerBullet: false,
+                    bulletType: bullet_component.BulletType.enemyHoming,
+                    speedMultiplier: speedMult * 1.2,  // 狂暴時稍快
                   ),
                 );
               }
@@ -1630,6 +1740,7 @@ class Boss extends PositionComponent
               position: position + Vector2(0, size.y / 2),
               angle: baseAngle,
               isPlayerBullet: false,
+              speedMultiplier: speedMult,
             ),
           );
         }

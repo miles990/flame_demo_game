@@ -4,6 +4,7 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
 import '../game/space_game.dart';
+import 'player.dart';
 
 class Hud extends PositionComponent with HasGameReference<SpaceGame> {
   Hud() : super(position: Vector2.zero(), priority: 200);
@@ -12,10 +13,15 @@ class Hud extends PositionComponent with HasGameReference<SpaceGame> {
   late TextComponent highScoreText;
   late TextComponent waveText;
   late TextComponent controlsText;
+  late TextComponent weaponText;
 
   int _displayedScore = 0;
   double _scoreGlow = 0;
   double _bossFlash = 0;
+
+  // 顯示說明的時機控制
+  bool _showHelp = true;
+  double _helpTimer = 15.0;  // 前 15 秒顯示說明
 
   @override
   Future<void> onLoad() async {
@@ -97,6 +103,43 @@ class Hud extends PositionComponent with HasGameReference<SpaceGame> {
       ),
     );
     add(controlsText);
+
+    // 武器類型顯示
+    weaponText = TextComponent(
+      text: 'STD Lv1',
+      position: Vector2(20, game.size.y - 60),
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          color: Color(0xFF00FF88),
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+    add(weaponText);
+  }
+
+  // 獲取武器類型名稱
+  String _getWeaponName(WeaponType type) {
+    switch (type) {
+      case WeaponType.standard: return 'STD';
+      case WeaponType.spread: return 'SPR';
+      case WeaponType.laser: return 'LAS';
+      case WeaponType.missile: return 'MSL';
+      case WeaponType.plasma: return 'PLA';
+    }
+  }
+
+  // 獲取武器類型顏色
+  Color _getWeaponColor(WeaponType type) {
+    switch (type) {
+      case WeaponType.standard: return const Color(0xFF00FF88);
+      case WeaponType.spread: return const Color(0xFF88FF00);
+      case WeaponType.laser: return const Color(0xFF00FFFF);
+      case WeaponType.missile: return const Color(0xFFFF6600);
+      case WeaponType.plasma: return const Color(0xFF8800FF);
+    }
   }
 
   @override
@@ -110,6 +153,121 @@ class Hud extends PositionComponent with HasGameReference<SpaceGame> {
     if (game.inBossBattle) {
       _drawBossIndicator(canvas);
     }
+
+    // 前 15 秒顯示道具說明
+    if (_showHelp && game.isPlaying) {
+      _drawPowerUpHelp(canvas);
+    }
+
+    // 繪製當前 buff 狀態
+    if (game.isPlaying) {
+      _drawBuffStatus(canvas);
+    }
+  }
+
+  /// 繪製道具說明
+  void _drawPowerUpHelp(Canvas canvas) {
+    final startX = game.size.x - 200.0;
+    final startY = 90.0;
+    final lineHeight = 18.0;
+    final opacity = (_helpTimer / 15.0).clamp(0.0, 1.0) * 0.8;
+
+    // 半透明背景
+    final bgPaint = Paint()
+      ..color = Colors.black.withOpacity(0.5 * opacity);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(startX - 10, startY - 5, 195, lineHeight * 8 + 15),
+        const Radius.circular(8),
+      ),
+      bgPaint,
+    );
+
+    // 標題
+    _drawText(canvas, '道具說明', startX, startY, 14,
+        Color.fromRGBO(255, 215, 0, opacity), FontWeight.bold);
+
+    // 道具列表
+    final items = [
+      ('W', '武器升級', const Color(0xFFFF6B00)),
+      ('S', '護盾 8秒', const Color(0xFF00BFFF)),
+      ('R', '快射 5秒', const Color(0xFFFF00FF)),
+      ('>', '加速 6秒', const Color(0xFFFFFF00)),
+      ('B', '清除全敵', const Color(0xFFFF0000)),
+      ('+', '額外生命', const Color(0xFF00FF00)),
+    ];
+
+    for (int i = 0; i < items.length; i++) {
+      final item = items[i];
+      final y = startY + (i + 1) * lineHeight;
+
+      // 符號
+      _drawText(canvas, item.$1, startX, y, 12,
+          item.$3.withOpacity(opacity), FontWeight.bold);
+      // 說明
+      _drawText(canvas, item.$2, startX + 25, y, 12,
+          Colors.white.withOpacity(opacity), FontWeight.normal);
+    }
+  }
+
+  /// 繪製當前 buff 狀態
+  void _drawBuffStatus(Canvas canvas) {
+    if (!game.isPlaying) return;
+
+    final player = game.player;
+    final buffs = <(String, Color, double)>[];
+
+    if (player.hasShield) {
+      buffs.add(('S', const Color(0xFF00BFFF), 1.0));
+    }
+    if (player.hasRapidFire) {
+      buffs.add(('R', const Color(0xFFFF00FF), 1.0));
+    }
+    if (player.hasSpeedBoost) {
+      buffs.add(('>', const Color(0xFFFFFF00), 1.0));
+    }
+
+    if (buffs.isEmpty) return;
+
+    final startX = 20.0;
+    final startY = game.size.y - 90.0;
+
+    for (int i = 0; i < buffs.length; i++) {
+      final buff = buffs[i];
+      final x = startX + i * 30;
+
+      // 外框
+      final bgPaint = Paint()
+        ..color = buff.$2.withOpacity(0.3)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(x + 10, startY), 12, bgPaint);
+
+      final borderPaint = Paint()
+        ..color = buff.$2
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      canvas.drawCircle(Offset(x + 10, startY), 12, borderPaint);
+
+      // 符號
+      _drawText(canvas, buff.$1, x + 4, startY - 7, 14, buff.$2, FontWeight.bold);
+    }
+  }
+
+  void _drawText(Canvas canvas, String text, double x, double y, double fontSize,
+      Color color, FontWeight weight) {
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: weight,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(canvas, Offset(x, y));
   }
 
   void _drawLives(Canvas canvas) {
@@ -213,6 +371,14 @@ class Hud extends PositionComponent with HasGameReference<SpaceGame> {
     // Boss 閃爍
     _bossFlash += dt * 3;
 
+    // 說明計時器
+    if (_showHelp && _helpTimer > 0) {
+      _helpTimer -= dt;
+      if (_helpTimer <= 0) {
+        _showHelp = false;
+      }
+    }
+
     // 平滑分數動畫
     if (_displayedScore < game.score) {
       final diff = game.score - _displayedScore;
@@ -229,6 +395,25 @@ class Hud extends PositionComponent with HasGameReference<SpaceGame> {
 
     scoreText.text = 'SCORE: $_displayedScore';
     highScoreText.text = 'BEST: ${game.highScore}';
+
+    // 更新武器顯示
+    if (game.isPlaying) {
+      final player = game.player;
+      final weaponName = _getWeaponName(player.weaponType);
+      final weaponColor = _getWeaponColor(player.weaponType);
+      weaponText.text = '$weaponName Lv${player.weaponLevel}';
+      weaponText.textRenderer = TextPaint(
+        style: TextStyle(
+          color: weaponColor,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1,
+          shadows: [
+            Shadow(color: weaponColor, blurRadius: 6),
+          ],
+        ),
+      );
+    }
 
     // 更新波數顯示
     if (game.inBossBattle) {

@@ -260,15 +260,66 @@ class PowerUp extends PositionComponent
   }
 
   void _triggerBomb() {
-    // 清除所有敵人
-    game.world.children
-        .whereType<PositionComponent>()
-        .where((c) => c.runtimeType.toString() == 'Enemy')
-        .toList()
-        .forEach((enemy) {
-          game.addScore(50);
-          enemy.removeFromParent();
-        });
+    // 清除所有敵人（使用 import 的 Enemy 類型）
+    final enemies = game.world.children.whereType<PositionComponent>().where((c) {
+      final typeName = c.runtimeType.toString();
+      return typeName == 'Enemy' || typeName == 'FormationEnemy';
+    }).toList();
+
+    for (final enemy in enemies) {
+      game.addScore(50);
+      // 添加爆炸效果
+      game.world.add(_BombExplosion(position: (enemy as PositionComponent).position.clone()));
+      enemy.removeFromParent();
+    }
+  }
+}
+
+/// Bomb 爆炸特效（比普通爆炸更大）
+class _BombExplosion extends PositionComponent {
+  _BombExplosion({required super.position})
+      : super(
+          size: Vector2.all(80),
+          anchor: Anchor.center,
+        );
+
+  double lifetime = 0;
+  final double maxLifetime = 0.4;
+
+  @override
+  void render(Canvas canvas) {
+    final progress = (lifetime / maxLifetime).clamp(0.0, 1.0);
+    final opacity = (1.0 - progress).clamp(0.0, 1.0);
+    final scale = 1.0 + progress * 1.5;
+
+    // 紅色外圈
+    final outerPaint = Paint()
+      ..color = const Color(0xFFFF4400).withOpacity(opacity * 0.6)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+    canvas.drawCircle(
+      Offset(size.x / 2, size.y / 2),
+      (size.x / 2) * scale,
+      outerPaint,
+    );
+
+    // 黃色內圈
+    final innerPaint = Paint()
+      ..color = const Color(0xFFFFFF00).withOpacity(opacity)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(
+      Offset(size.x / 2, size.y / 2),
+      (size.x / 3) * scale,
+      innerPaint,
+    );
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    lifetime += dt;
+    if (lifetime >= maxLifetime) {
+      removeFromParent();
+    }
   }
 }
 
