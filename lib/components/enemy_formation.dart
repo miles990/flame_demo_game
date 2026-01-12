@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flame/components.dart';
+import 'package:flutter/foundation.dart';
 
 import '../game/space_game.dart';
 import 'enemy.dart';
