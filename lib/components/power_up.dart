@@ -262,12 +262,16 @@ class PowerUp extends PositionComponent
   }
 
   void _triggerBomb() {
+    print('[Bomb PowerUp] _triggerBomb() called!');
+
     // 添加全屏閃光效果（確認 Bomb 被觸發）
     game.world.add(_BombFlash(gameSize: game.size));
 
     // 遞迴收集所有敵人（包含在子組件中的）
     final enemiesToDestroy = <Enemy>[];
     _collectEnemiesRecursive(game.world, enemiesToDestroy);
+
+    print('[Bomb PowerUp] Found ${enemiesToDestroy.length} enemies to destroy');
 
     // 處理所有敵人
     for (final enemy in enemiesToDestroy) {
