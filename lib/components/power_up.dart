@@ -262,54 +262,37 @@ class PowerUp extends PositionComponent
   }
 
   void _triggerBomb() {
-    debugPrint('[Bomb] Triggered! Scanning world children...');
-    debugPrint('[Bomb] Total world children: ${game.world.children.length}');
+    // 添加全屏閃光效果（確認 Bomb 被觸發）
+    game.world.add(_BombFlash(gameSize: game.size));
 
-    // 列出所有 children 類型以便除錯
-    for (final child in game.world.children) {
-      debugPrint('[Bomb] Child type: ${child.runtimeType}');
-    }
-
-    // 收集所有敵人（使用多種方式確保能抓到）
-    final enemiesToDestroy = <Component>[];
+    // 收集所有敵人（直接遍歷 world.children）
+    final enemiesToDestroy = <Enemy>[];
 
     for (final child in game.world.children) {
-      // 檢查是否為 Enemy 或其子類
       if (child is Enemy) {
         enemiesToDestroy.add(child);
-        debugPrint('[Bomb] Found Enemy via "is Enemy": ${child.runtimeType}');
       }
     }
 
-    debugPrint('[Bomb] Found ${enemiesToDestroy.length} enemies to destroy');
-
     // 處理所有敵人
-    for (final component in enemiesToDestroy) {
-      final enemy = component as Enemy;
+    for (final enemy in enemiesToDestroy) {
       game.addScore(50);
-      // 添加爆炸效果
       game.world.add(_BombExplosion(position: enemy.position.clone()));
       enemy.removeFromParent();
     }
 
     // 處理 Boss（Boss 不繼承自 Enemy，需要單獨處理）
-    for (final child in game.world.children) {
-      if (child is Boss) {
-        debugPrint('[Bomb] Found Boss, dealing 3 damage');
-        child.takeDamage(3);
-        game.addScore(100);
-      }
+    final bossList = game.world.children.whereType<Boss>().toList();
+    for (final boss in bossList) {
+      boss.takeDamage(3);
+      game.addScore(100);
     }
 
     // 清除所有敵人子彈
-    final enemyBullets = <Bullet>[];
-    for (final child in game.world.children) {
-      if (child is Bullet && !child.isPlayerBullet) {
-        enemyBullets.add(child);
-      }
-    }
-
-    debugPrint('[Bomb] Clearing ${enemyBullets.length} enemy bullets');
+    final enemyBullets = game.world.children
+        .whereType<Bullet>()
+        .where((b) => !b.isPlayerBullet)
+        .toList();
 
     for (final bullet in enemyBullets) {
       bullet.removeFromParent();
@@ -352,6 +335,45 @@ class _BombExplosion extends PositionComponent {
       Offset(size.x / 2, size.y / 2),
       (size.x / 3) * scale,
       innerPaint,
+    );
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    lifetime += dt;
+    if (lifetime >= maxLifetime) {
+      removeFromParent();
+    }
+  }
+}
+
+/// Bomb 全屏閃光效果（確認 Bomb 被觸發）
+class _BombFlash extends PositionComponent {
+  final Vector2 gameSize;
+
+  _BombFlash({required this.gameSize})
+      : super(
+          position: Vector2.zero(),
+          size: gameSize,
+          priority: 1000,  // 最高優先級，顯示在最上層
+        );
+
+  double lifetime = 0;
+  final double maxLifetime = 0.3;
+
+  @override
+  void render(Canvas canvas) {
+    final progress = (lifetime / maxLifetime).clamp(0.0, 1.0);
+    final opacity = (1.0 - progress) * 0.8;
+
+    // 全屏白色閃光
+    final flashPaint = Paint()
+      ..color = Color.fromRGBO(255, 100, 100, opacity);
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.x, size.y),
+      flashPaint,
     );
   }
 
