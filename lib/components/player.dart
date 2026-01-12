@@ -567,8 +567,12 @@ class Player extends PositionComponent
     // 添加全屏閃光效果
     game.world.add(_BombFlashCheat(gameSize: game.size));
 
-    // 收集並消滅所有敵人
-    final enemies = game.world.children.whereType<enemy_component.Enemy>().toList();
+    // 遞迴收集所有敵人（包含在子組件中的）
+    final enemies = <enemy_component.Enemy>[];
+    _collectEnemiesRecursive(game.world, enemies);
+
+    print('[Bomb Cheat] Found ${enemies.length} enemies');
+
     for (final enemy in enemies) {
       game.addScore(50);
       game.world.add(_BombExplosionCheat(position: enemy.position.clone()));
@@ -576,19 +580,50 @@ class Player extends PositionComponent
     }
 
     // 對 Boss 造成傷害
-    final bosses = game.world.children.whereType<enemy_component.Boss>().toList();
+    final bosses = <enemy_component.Boss>[];
+    _collectBossesRecursive(game.world, bosses);
     for (final boss in bosses) {
       boss.takeDamage(3);
       game.addScore(100);
     }
 
     // 清除敵人子彈
-    final bullets = game.world.children
-        .whereType<bullet_component.Bullet>()
-        .where((b) => !b.isPlayerBullet)
-        .toList();
+    final bullets = <bullet_component.Bullet>[];
+    _collectBulletsRecursive(game.world, bullets);
     for (final bullet in bullets) {
-      bullet.removeFromParent();
+      if (!bullet.isPlayerBullet) {
+        bullet.removeFromParent();
+      }
+    }
+  }
+
+  /// 遞迴收集所有 Enemy
+  void _collectEnemiesRecursive(Component parent, List<enemy_component.Enemy> result) {
+    for (final child in parent.children) {
+      if (child is enemy_component.Enemy) {
+        result.add(child);
+      }
+      _collectEnemiesRecursive(child, result);
+    }
+  }
+
+  /// 遞迴收集所有 Boss
+  void _collectBossesRecursive(Component parent, List<enemy_component.Boss> result) {
+    for (final child in parent.children) {
+      if (child is enemy_component.Boss) {
+        result.add(child);
+      }
+      _collectBossesRecursive(child, result);
+    }
+  }
+
+  /// 遞迴收集所有子彈
+  void _collectBulletsRecursive(Component parent, List<bullet_component.Bullet> result) {
+    for (final child in parent.children) {
+      if (child is bullet_component.Bullet) {
+        result.add(child);
+      }
+      _collectBulletsRecursive(child, result);
     }
   }
 
