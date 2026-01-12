@@ -265,14 +265,9 @@ class PowerUp extends PositionComponent
     // 添加全屏閃光效果（確認 Bomb 被觸發）
     game.world.add(_BombFlash(gameSize: game.size));
 
-    // 收集所有敵人（直接遍歷 world.children）
+    // 遞迴收集所有敵人（包含在子組件中的）
     final enemiesToDestroy = <Enemy>[];
-
-    for (final child in game.world.children) {
-      if (child is Enemy) {
-        enemiesToDestroy.add(child);
-      }
-    }
+    _collectEnemiesRecursive(game.world, enemiesToDestroy);
 
     // 處理所有敵人
     for (final enemy in enemiesToDestroy) {
@@ -281,21 +276,51 @@ class PowerUp extends PositionComponent
       enemy.removeFromParent();
     }
 
-    // 處理 Boss（Boss 不繼承自 Enemy，需要單獨處理）
-    final bossList = game.world.children.whereType<Boss>().toList();
+    // 遞迴處理 Boss（Boss 不繼承自 Enemy，需要單獨處理）
+    final bossList = <Boss>[];
+    _collectBossesRecursive(game.world, bossList);
     for (final boss in bossList) {
       boss.takeDamage(3);
       game.addScore(100);
     }
 
-    // 清除所有敵人子彈
-    final enemyBullets = game.world.children
-        .whereType<Bullet>()
-        .where((b) => !b.isPlayerBullet)
-        .toList();
+    // 遞迴清除所有敵人子彈
+    final allBullets = <Bullet>[];
+    _collectBulletsRecursive(game.world, allBullets);
+    for (final bullet in allBullets) {
+      if (!bullet.isPlayerBullet) {
+        bullet.removeFromParent();
+      }
+    }
+  }
 
-    for (final bullet in enemyBullets) {
-      bullet.removeFromParent();
+  /// 遞迴收集所有 Enemy
+  void _collectEnemiesRecursive(Component parent, List<Enemy> result) {
+    for (final child in parent.children) {
+      if (child is Enemy) {
+        result.add(child);
+      }
+      _collectEnemiesRecursive(child, result);
+    }
+  }
+
+  /// 遞迴收集所有 Boss
+  void _collectBossesRecursive(Component parent, List<Boss> result) {
+    for (final child in parent.children) {
+      if (child is Boss) {
+        result.add(child);
+      }
+      _collectBossesRecursive(child, result);
+    }
+  }
+
+  /// 遞迴收集所有子彈
+  void _collectBulletsRecursive(Component parent, List<Bullet> result) {
+    for (final child in parent.children) {
+      if (child is Bullet) {
+        result.add(child);
+      }
+      _collectBulletsRecursive(child, result);
     }
   }
 }
