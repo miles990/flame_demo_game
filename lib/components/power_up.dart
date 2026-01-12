@@ -198,18 +198,18 @@ class PowerUp extends PositionComponent
   ) {
     super.onCollisionStart(intersectionPoints, other);
 
-    print('[PowerUp] onCollisionStart with ${other.runtimeType}, type=$type');
+    debugPrint('[PowerUp] onCollisionStart with ${other.runtimeType}, type=$type');
 
     if (other is Player) {
       // 套用道具效果
-      print('[PowerUp] Applying effect: $type');
+      debugPrint('[PowerUp] Applying effect: $type');
       _applyEffect(other);
       removeFromParent();
     }
   }
 
   void _applyEffect(Player player) {
-    print('[PowerUp] _applyEffect called for type: $type');
+    debugPrint('[PowerUp] _applyEffect called for type: $type');
     switch (type) {
       case PowerUpType.weaponUpgrade:
         player.upgradeWeapon();
@@ -224,7 +224,7 @@ class PowerUp extends PositionComponent
         player.activateRapidFire();
         break;
       case PowerUpType.bomb:
-        print('[PowerUp] BOMB case - calling _triggerBomb()');
+        debugPrint('[PowerUp] BOMB case - calling _triggerBomb()');
         _triggerBomb();
         break;
       case PowerUpType.extraLife:
@@ -267,7 +267,7 @@ class PowerUp extends PositionComponent
   }
 
   void _triggerBomb() {
-    print('[Bomb PowerUp] _triggerBomb() called!');
+    debugPrint('[Bomb PowerUp] _triggerBomb() called!');
 
     // 添加全屏閃光效果（確認 Bomb 被觸發）
     game.world.add(_BombFlash(gameSize: game.size));
@@ -276,7 +276,7 @@ class PowerUp extends PositionComponent
     final enemiesToDestroy = <Enemy>[];
     _collectEnemiesRecursive(game.world, enemiesToDestroy);
 
-    print('[Bomb PowerUp] Found ${enemiesToDestroy.length} enemies to destroy');
+    debugPrint('[Bomb PowerUp] Found ${enemiesToDestroy.length} enemies to destroy');
 
     // 處理所有敵人
     for (final enemy in enemiesToDestroy) {
