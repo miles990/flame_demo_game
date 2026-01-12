@@ -4,7 +4,7 @@ A retro-style arcade space shooting game built with **Flutter** and **Flame Engi
 
 ## Play Now
 
-[Play Space Shooter](https://user.github.io/flame_demo_game/)
+[Play Space Shooter](https://miles990.github.io/flame_demo_game/)
 
 ## Screenshots
 
