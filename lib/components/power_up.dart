@@ -262,30 +262,52 @@ class PowerUp extends PositionComponent
   }
 
   void _triggerBomb() {
-    // 收集所有 Enemy 類型（包括繼承的子類）
-    // 注意：FormationEnemy 繼承自 Enemy，所以會被 whereType<Enemy> 抓到
-    final enemies = game.world.children.whereType<Enemy>().toList();
+    debugPrint('[Bomb] Triggered! Scanning world children...');
+    debugPrint('[Bomb] Total world children: ${game.world.children.length}');
 
-    debugPrint('[Bomb] Found ${enemies.length} enemies to destroy');
+    // 列出所有 children 類型以便除錯
+    for (final child in game.world.children) {
+      debugPrint('[Bomb] Child type: ${child.runtimeType}');
+    }
 
-    for (final enemy in enemies) {
-      // Boss 不會被炸彈一擊殺死，但會受到傷害
-      if (enemy is Boss) {
-        enemy.takeDamage(3);  // 對 Boss 造成 3 點傷害
+    // 收集所有敵人（使用多種方式確保能抓到）
+    final enemiesToDestroy = <Component>[];
+
+    for (final child in game.world.children) {
+      // 檢查是否為 Enemy 或其子類
+      if (child is Enemy) {
+        enemiesToDestroy.add(child);
+        debugPrint('[Bomb] Found Enemy via "is Enemy": ${child.runtimeType}');
+      }
+    }
+
+    debugPrint('[Bomb] Found ${enemiesToDestroy.length} enemies to destroy');
+
+    // 處理所有敵人
+    for (final component in enemiesToDestroy) {
+      final enemy = component as Enemy;
+      game.addScore(50);
+      // 添加爆炸效果
+      game.world.add(_BombExplosion(position: enemy.position.clone()));
+      enemy.removeFromParent();
+    }
+
+    // 處理 Boss（Boss 不繼承自 Enemy，需要單獨處理）
+    for (final child in game.world.children) {
+      if (child is Boss) {
+        debugPrint('[Bomb] Found Boss, dealing 3 damage');
+        child.takeDamage(3);
         game.addScore(100);
-      } else {
-        game.addScore(50);
-        // 添加爆炸效果
-        game.world.add(_BombExplosion(position: enemy.position.clone()));
-        enemy.removeFromParent();
       }
     }
 
     // 清除所有敵人子彈
-    final enemyBullets = game.world.children
-        .whereType<Bullet>()
-        .where((b) => !b.isPlayerBullet)
-        .toList();
+    final enemyBullets = <Bullet>[];
+    for (final child in game.world.children) {
+      if (child is Bullet && !child.isPlayerBullet) {
+        enemyBullets.add(child);
+      }
+    }
 
     debugPrint('[Bomb] Clearing ${enemyBullets.length} enemy bullets');
 
