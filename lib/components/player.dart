@@ -634,6 +634,8 @@ class Player extends PositionComponent
   ) {
     super.onCollisionStart(intersectionPoints, other);
 
+    debugPrint('[Player] onCollisionStart with ${other.runtimeType}');
+
     if (other is enemy_component.Enemy) {
       takeDamage();
     } else if (other is enemy_component.Boss) {
