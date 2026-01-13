@@ -153,6 +153,10 @@ The self-evolving-agent autonomously:
 - 12 power-up types
 - Formation bonus system
 
+**Bug fixes** (2026-01-13):
+- Fixed Bomb power-up not clearing enemies (recursive search for nested components)
+- Added visual confirmation flash effect when Bomb triggers
+
 ### Why This Approach?
 
 | Traditional | AI-Assisted |
