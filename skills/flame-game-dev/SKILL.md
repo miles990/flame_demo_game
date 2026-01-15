@@ -70,6 +70,9 @@ roguelike.md    - 程序生成地下城
 要做 RPG？           → 讀 flame-templates/references/rpg.md
 要做平台遊戲？       → 讀 flame-templates/references/platformer.md
 要做 Roguelike？     → 讀 flame-templates/references/roguelike.md
+
+# 部署發布
+要發布遊戲？         → 參考下方「部署平台」章節
 ```
 
 ## Quick Start
@@ -96,6 +99,64 @@ class MyGame extends FlameGame with HasCollisionDetection {
 }
 ```
 
+## 部署平台
+
+Flame 基於 Flutter，支援多平台部署：
+
+| 平台 | 發布管道 | 指令 |
+|------|----------|------|
+| **iOS** | App Store | `flutter build ios --release` |
+| **Android** | Google Play | `flutter build apk --release` |
+| **Web** | itch.io / GitHub Pages | `flutter build web --release` |
+| **macOS** | App Store / 獨立 | `flutter build macos --release` |
+| **Windows** | Steam / 獨立 | `flutter build windows --release` |
+| **Linux** | Steam / 獨立 | `flutter build linux --release` |
+
+### 發布到 itch.io (Web)
+
+```bash
+# 1. 建置 Web 版本
+flutter build web --release --web-renderer canvaskit
+
+# 2. 上傳 build/web 資料夾到 itch.io
+
+# 3. itch.io 設置
+#    - Kind of project: HTML
+#    - Embed options: Click to launch in fullscreen
+```
+
+### 發布到 Google Play (Android)
+
+```bash
+# 1. 建立 keystore
+keytool -genkey -v -keystore ~/my-game.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-game
+
+# 2. 設定 android/key.properties
+storePassword=<password>
+keyPassword=<password>
+keyAlias=my-game
+storeFile=/Users/you/my-game.jks
+
+# 3. 建置 App Bundle
+flutter build appbundle --release
+
+# 4. 上傳 build/app/outputs/bundle/release/app-release.aab
+```
+
+### 發布到 Steam (Desktop)
+
+```bash
+# 1. 建置 Desktop 版本
+flutter build windows --release  # 或 macos / linux
+
+# 2. 使用 Steamworks SDK 打包
+#    - 設定 app_build.vdf
+#    - 上傳到 Steam Partner
+
+# 3. 建議加入 Steam 成就整合
+#    flutter pub add steamworks
+```
+
 ## Dependency Graph
 
 ```
@@ -120,6 +181,7 @@ flame-game-dev (總索引)
 
 ## Version History
 
+- v2.2.0 - 新增部署平台指南（itch.io、Google Play、Steam）
 - v2.1.0 - 新增 Audio、Particles、Performance references
 - v2.0.0 - 重構為三個子 skills，模組化架構
 - v1.0.0 - 初始版本（單一大檔案）
