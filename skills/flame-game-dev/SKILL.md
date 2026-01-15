@@ -14,7 +14,7 @@ Flame Engine 遊戲開發完整指南，包含核心基礎、14 個遊戲系統�
 
 | Skill | Description | Reference Count |
 |-------|-------------|-----------------|
-| **flame-core** | 引擎核心基礎 | 7 references |
+| **flame-core** | 引擎核心基礎 | 10 references |
 | **flame-systems** | 14 個遊戲系統 | 14 references |
 | **flame-templates** | 遊戲類型模板 | 3 references |
 
@@ -28,6 +28,9 @@ collision.md    - 碰撞檢測、Hitbox
 camera.md       - 相機、HUD、視口
 animation.md    - 精靈動畫、Effects
 scenes.md       - RouterComponent、Overlays、UI
+audio.md        - 音效、背景音樂
+particles.md    - 粒子系統、特效
+performance.md  - 效能優化、最佳實踐
 debug.md        - 除錯模式、日誌
 ```
 
@@ -99,7 +102,7 @@ class MyGame extends FlameGame with HasCollisionDetection {
 flame-game-dev (總索引)
     │
     ├── flame-core (核心基礎)
-    │   └── 7 reference files
+    │   └── 10 reference files
     │
     ├── flame-systems (遊戲系統)
     │   └── 14 reference files
@@ -117,5 +120,6 @@ flame-game-dev (總索引)
 
 ## Version History
 
+- v2.1.0 - 新增 Audio、Particles、Performance references
 - v2.0.0 - 重構為三個子 skills，模組化架構
 - v1.0.0 - 初始版本（單一大檔案）

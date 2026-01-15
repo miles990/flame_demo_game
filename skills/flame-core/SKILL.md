@@ -43,6 +43,9 @@ class MyGame extends FlameGame with HasCollisionDetection {
 | **Camera** | `references/camera.md` | 相機設置、跟隨、HUD |
 | **Animation** | `references/animation.md` | 精靈動畫、Effects 系統 |
 | **Scenes** | `references/scenes.md` | RouterComponent、Overlays、UI |
+| **Audio** | `references/audio.md` | 音效、背景音樂、AudioPool |
+| **Particles** | `references/particles.md` | 粒子系統、特效、爆炸效果 |
+| **Performance** | `references/performance.md` | 效能優化、最佳實踐、常見問題 |
 | **Debug** | `references/debug.md` | 除錯模式、日誌、效能監控 |
 
 ## AI Usage Guide
@@ -54,6 +57,9 @@ class MyGame extends FlameGame with HasCollisionDetection {
 需要相機設置？     → Read references/camera.md
 需要動畫效果？     → Read references/animation.md
 需要場景管理/UI？  → Read references/scenes.md
+需要音效/音樂？    → Read references/audio.md
+需要粒子特效？     → Read references/particles.md
+需要效能優化？     → Read references/performance.md
 需要除錯/日誌？    → Read references/debug.md
 ```
 
